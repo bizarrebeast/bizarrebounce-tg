@@ -2,10 +2,13 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   async rewrites() {
-    return [
-      // Serve the game HTML at the root. Telegram Mini App URL points here.
-      { source: '/', destination: '/game.html' },
-    ];
+    // beforeFiles so the rewrite wins over app/page.tsx — the Telegram Mini App
+    // URL points at /, and we want the game asset served there.
+    return {
+      beforeFiles: [{ source: '/', destination: '/game.html' }],
+      afterFiles: [],
+      fallback: [],
+    };
   },
 };
 
