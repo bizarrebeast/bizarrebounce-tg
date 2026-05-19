@@ -101,11 +101,22 @@
             TG.expand();
             TG.disableVerticalSwipes?.();
           } catch (e) {}
+          // Pull the player's personal best so the splash can show "BEST: X".
+          fetch('/api/me', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initData: TG.initData }),
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.high_score) playerHighScore = d.high_score; })
+            .catch(() => {});
         }
 
         // Tracking is sequenced so play_end always lands after its play_start.
         let currentPlayId = null;
         let pendingTrack = Promise.resolve();
+        // Personal best — fetched once on load, refreshed from play_end responses.
+        let playerHighScore = 0;
 
         function trackTG(event, payload = {}) {
           if (!inTelegram) return Promise.resolve(null);
@@ -133,7 +144,12 @@
 
         function reportGameOver(finalScore) {
           if (inTelegram) {
-            trackTG('play_end', { score: finalScore, play_id: currentPlayId });
+            trackTG('play_end', { score: finalScore, play_id: currentPlayId })
+              .then(res => {
+                if (res?.high_score != null && res.high_score > playerHighScore) {
+                  playerHighScore = res.high_score;
+                }
+              });
             currentPlayId = null;
             // No Farcade overlay in Telegram — drop straight into a new run.
             // resetGame() re-shows the bizarre bar; startCountdown() shows the score HUD.
@@ -805,6 +821,22 @@
           ctx.strokeText('BOUNCE', cw / 2, titleY + fontSize * 1.1);
           ctx.fillText('BOUNCE', cw / 2, titleY + fontSize * 1.1);
           ctx.restore();
+
+          // Personal best — only shown in Telegram once we've fetched a high_score.
+          if (playerHighScore > 0) {
+            ctx.save();
+            const bestSize = Math.min(cw * 0.06, 24);
+            ctx.font = `${bestSize}px Slackey`;
+            ctx.fillStyle = '#ff69b4';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 4;
+            ctx.textAlign = 'center';
+            const bestY = titleY + fontSize * 1.1 + bestSize * 2.2;
+            const text = 'BEST: ' + playerHighScore.toLocaleString();
+            ctx.strokeText(text, cw / 2, bestY);
+            ctx.fillText(text, cw / 2, bestY);
+            ctx.restore();
+          }
 
           // Yellow play button position
           const btnSize = Math.min(cw * 0.2, 80);
