@@ -12,6 +12,8 @@ if (!BOT_TOKEN || !WEBHOOK_SECRET) {
 const BOT_USERNAME = 'BizarreBeastsBot';
 const MINI_APP_SHORT = 'bbbounce';
 const TG_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const PUBLIC_ORIGIN = 'https://bizarrebounce-tg.vercel.app';
+const START_GIF_URL = `${PUBLIC_ORIGIN}/bizarrebounce-bizarrebeasts.gif`;
 
 type InlineKeyboard = { inline_keyboard: { text: string; url: string }[][] };
 
@@ -26,6 +28,14 @@ async function sendMessage(chat_id: number, text: string, reply_markup?: InlineK
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id, text, parse_mode: 'HTML', reply_markup, disable_web_page_preview: true }),
+  });
+}
+
+async function sendAnimation(chat_id: number, animationUrl: string, caption: string, reply_markup?: InlineKeyboard) {
+  await fetch(`${TG_API}/sendAnimation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id, animation: animationUrl, caption, parse_mode: 'HTML', reply_markup }),
   });
 }
 
@@ -58,7 +68,7 @@ export async function POST(req: NextRequest) {
   // /start optionally carries an attribution payload: /start twitter_may19
   if (text === '/start' || text.startsWith('/start ')) {
     const param = text.slice('/start'.length).trim() || undefined;
-    await sendMessage(chatId, WELCOME, playButton(param));
+    await sendAnimation(chatId, START_GIF_URL, WELCOME, playButton(param));
   } else if (text === '/play' || text === '/help') {
     await sendMessage(chatId, 'Tap below to play 👇', playButton());
   } else {
