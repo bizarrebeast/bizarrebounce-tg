@@ -168,12 +168,20 @@
 
         let cw, ch;
         function resizeCanvas() {
+          // Scale the drawing buffer by devicePixelRatio so high-DPI screens render
+          // crisp lines. CSS size stays at innerWidth/innerHeight; ctx.setTransform
+          // bakes the DPR into all draw calls so existing game code (which uses cw/ch
+          // as logical pixels) needs zero changes.
+          const dpr = window.devicePixelRatio || 1;
           cw = window.innerWidth;
           ch = window.innerHeight;
-          canvas.width = cw;
-          canvas.height = ch;
-          // Disable image smoothing for better performance
-          ctx.imageSmoothingEnabled = false;
+          canvas.style.width = cw + 'px';
+          canvas.style.height = ch + 'px';
+          canvas.width = Math.floor(cw * dpr);
+          canvas.height = Math.floor(ch * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
         }
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
