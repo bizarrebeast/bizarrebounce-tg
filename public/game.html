@@ -1,0 +1,1519 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bizarre Bounce</title>
+    <script src="https://cdn.jsdelivr.net/npm/@farcade/game-sdk@latest/dist/index.min.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Slackey&amp;display=swap" rel="stylesheet">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Slackey', sans-serif;
+        background: #1a1a2e;
+        touch-action: manipulation;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #game-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+      #score {
+        position: absolute;
+        top: 10px;
+        left: 5%;
+        right: 5%;
+        width: 90%;
+        color: #ffdd00;
+        font-size: clamp(14px, 4vw, 20px);
+        text-align: center;
+        white-space: nowrap;
+        pointer-events: none;
+        text-shadow: 2px 2px 4px #000;
+        z-index: 100;
+        display: none;
+      }
+      #score.pulse {
+        animation: pulse 0.5s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+      }
+      #bizarre-bar {
+        position: absolute;
+        top: 45px;
+        left: 10%;
+        width: 80%;
+        height: 12px;
+        background: rgba(0,0,0,0.4);
+        border: 2px solid #000;
+        border-radius: 6px;
+        z-index: 100;
+        pointer-events: none;
+      }
+      #bizarre-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #ff69b4, #ffcc00);
+        width: 0%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-container">
+      <canvas id="game"></canvas>
+      <div id="score"></div>
+      <div id="bizarre-bar" style="display:none"><div id="bizarre-fill"></div></div>
+    </div>
+
+    
+    
+
+    <script>
+      if (window === window.top && document.getElementById('remix-root')) {
+        console.log('Builder Studio loading...');
+      } else {
+        // ============================================
+        // SDK HELPERS — multi-host (Farcade + Telegram)
+        // ============================================
+        // Host detection runs once. initData is only non-empty inside the Telegram client.
+        const TG = window.Telegram?.WebApp;
+        const inTelegram = !!(TG && TG.initData);
+
+        if (inTelegram) {
+          try {
+            TG.ready();
+            TG.expand();
+            TG.disableVerticalSwipes?.();
+          } catch (e) {}
+        }
+
+        // Tracking is sequenced so play_end always lands after its play_start.
+        let currentPlayId = null;
+        let pendingTrack = Promise.resolve();
+
+        function trackTG(event, payload = {}) {
+          if (!inTelegram) return Promise.resolve(null);
+          pendingTrack = pendingTrack.then(() =>
+            fetch('/api/track', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ event, initData: TG.initData, ...payload }),
+              keepalive: true, // survives tab close on play_end
+            }).then(r => r.ok ? r.json() : null).catch(() => null)
+          );
+          return pendingTrack;
+        }
+
+        function triggerHaptic() {
+          if (inTelegram) {
+            try { TG.HapticFeedback?.impactOccurred?.('light'); } catch (e) {}
+            return;
+          }
+          try {
+            (window.FarcadeSDK?.hapticFeedback ||
+             window.FarcadeSDK?.singlePlayer?.actions?.hapticFeedback)?.();
+          } catch (e) {}
+        }
+
+        function reportGameOver(finalScore) {
+          if (inTelegram) {
+            trackTG('play_end', { score: finalScore, play_id: currentPlayId });
+            currentPlayId = null;
+            return;
+          }
+          try {
+            (window.FarcadeSDK?.gameOver ||
+             window.FarcadeSDK?.singlePlayer?.actions?.gameOver)?.({ score: finalScore });
+          } catch (e) {}
+        }
+
+        function signalReady() {
+          if (inTelegram) {
+            // Each countdown→playing transition is a new play row.
+            trackTG('play_start').then(res => {
+              if (res?.play_id) currentPlayId = res.play_id;
+            });
+            return;
+          }
+          try {
+            (window.FarcadeSDK?.ready ||
+             window.FarcadeSDK?.singlePlayer?.actions?.ready)?.();
+          } catch (e) {}
+        }
+
+        // ============================================
+        // CANVAS SETUP
+        // ============================================
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const bizarreBar = document.getElementById('bizarre-bar');
+        const bizarreFill = document.getElementById('bizarre-fill');
+
+        let cw, ch;
+        function resizeCanvas() {
+          cw = window.innerWidth;
+          ch = window.innerHeight;
+          canvas.width = cw;
+          canvas.height = ch;
+          // Disable image smoothing for better performance
+          ctx.imageSmoothingEnabled = false;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ============================================
+        // COLORS (Munchies Climb style)
+        // ============================================
+        const COLORS = {
+          skyTop: '#ff1493',
+          skyMid: '#ff8c00',
+          skyBottom: '#ffcc00',
+          cloudPink: '#ff69b4',
+          outlineBlack: '#000',
+          buildingTeal: '#20b2aa',
+          buildingPink: '#ff69b4',
+          buildingPurple: '#9370db',
+          buildingOrange: '#ff8c00',
+          buildingYellow: '#ffd700',
+          pipePurple: '#9370db',
+          pipeTeal: '#20b2aa',
+          floorTeal: '#20b2aa'
+        };
+        const BUILDING_COLORS = [COLORS.buildingTeal, COLORS.buildingPink, COLORS.buildingPurple, COLORS.buildingOrange, COLORS.buildingYellow];
+
+        // ============================================
+        // BEAST SKINS (all variants)
+        // ============================================
+        const beastSkins = {
+          Bart: {
+            idle: [
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20purple%20idle-KMPdGx1qdPxUkKnU6j0JSlnO8xHG3v.png?trX8",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20orange%20idle-veiDd8cGbFLNQ8v4LvRrsG6Koh3m8X.png?7kt9",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20teal%20idle-cOUgj1WH1TF4v9n6W0xmUBLcgKizN7.png?0ovt",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20pink%20idle-fwfotpkdciw3OHvfNavHqWSHnK3OdN.png?Yept"
+            ],
+            go: [
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20GO%20BIZARRE%20purple%20idle-8KI51KpkryAsKE6nAxbFZ7K2FLMAuy.png?GiIp",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20GO%20BIZARRE%20orange%20idle-uoF3ON54AzzHFHP8s7K5NgY7EJeydU.png?7PQV",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20GO%20BIZARRE%20teal%20idle-q2fJ4h9crf0PSt96HixMHF0j28rh84.png?uvEu",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20GO%20BIZARRE%20pink%20idle-5LkOCAb6N8hy8PAgx9WsMEjAdQf15r.png?n33w"
+            ],
+            bounce: [
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bartholomew%20bouncing%20purple-M4dPzYwQHTZetWrYg4O5cFprnAsyP9.png?vcF4",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bartholomew%20bouncing%20orange-IDJy9VvL33YpWv2EwegdgPK60BEPpE.png?RDlm",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bartholomew%20bouncing%20teal-SBOMCMmi4CQF6cgEtyoqQuET3yfrh8.png?UPb2",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bartholomew%20bouncing%20pink-SYbODb0X9c5gTYuMhkBg19YLFpqtXX.png?xu8V"
+            ],
+            bounceGo: [
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bartholomew%20bouncing%20purple%20go%20bizarre-oDJZ7uorZwzI1BTIkF0pIF1P0FqR9j.png?7XCx",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bartholomew%20bouncing%20orange%20go%20bizarre-4zq4DTtrxctPifGyEn2mB6iFA6W0lf.png?LtQO",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bartholomew%20bouncing%20teal%20go%20bizarre-MGQt5dTzi0MfddiTdjyuek56AeCZCD.png?f9YV",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bartholomew%20bouncing%20pink%20go%20bizarre-ES2wLPO1uuSUKZdI65mHTMNJk08ZpM.png?bqPK"
+            ]
+          },
+          Louie: {
+            idle: [
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20yellow%20idle-xkkIuJXKNEzm5AsKqjPdt6NYZb5YJA.png?RA7u",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20blue%20idle-HVw12HRm1sAvWocWTxvJbDL5d6ZtLM.png?FIfc",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20idle%20green-xjZmgGbHL6Rf20AJmWsk9JjqfGtfXo.png?lUmv",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20pink%20idle-778UamOxz14JqCJpDdd8mNNJk4ECKl.png?U0wt"
+            ],
+            go: [
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20GO%20BIZARRE%20yellow%20idle-c41wQS5TeM9TefmP6Idb8VaNhC6vXl.png?7M3H",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20GO%20BIZARRE%20blue%20idle-sqjgRCAsjtcmBnPM0TtO0wCuGWq6JG.png?mYnQ",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20GO%20BIZARRE%20green-nY8rUIhRYHdK2BUrN11q30RBb21lNt.png?es5o",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20GO%20BIZARRE%20pink%20idle-QcsMn2XRg7fcqaMa2s16BeviwfTvOn.png?05CZ"
+            ],
+            bounce: [
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20bouncing%20yellow-VfqV2ix5oh2mPCivw4AIVNm84n2pof.png?T4NU",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20bouncing%20blue-2WPdNH8H1oF0c00iI0yOLKSstri2VF.png?iVPF",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20bouncing%20green-EcAiHygM0OrJtOoMPVxYpMLk346EVW.png?ChVP",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20bouncing%20pink-JAODNG3vJBcxQaJkCE448XoMvPAyH5.png?bsbK"
+            ],
+            bounceGo: [
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20bouncing%20yellow%20go%20bizarre-YtIpt3PgpTq80cYlnZB9vWGHKKJKYg.png?XZsQ",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20bouncing%20blue%20go%20bizarre-5Qa1rQfG5pr65InOaLMakPJFYjLpeP.png?hXi9",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20bouncing%20green%20go%20bizarre-zIIaMMxBtekWCnDWw4qwuznSzc6zEc.png?dOe8",
+              "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20bouncing%20pink%20go%20bizarre-y4WrG0mip77bP5uWa1XXHPbFCzZtEP.png?zXXJ"
+            ]
+          }
+        };
+
+        // ============================================
+        // ITEM TYPES
+        // ============================================
+        const itemTypes = [
+          { name: 'egg', src: "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Egg-GMmq1vGhHyrudgdi1xUR0mye91qDcC.png?ueov", points: 250, weight: 30 },
+          { name: 'pizza', src: "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Pizza-3qMro3YY7WOPxjkyXDuYbv51RzO0HB.png?qax6", points: 500, weight: 20 },
+          { name: 'burger', src: "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Burger-gNRc6fOp2Cu5gg163B7676PtJNjmAg.png?cFGn", points: 1000, weight: 15 },
+          { name: 'popcorn', src: "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Popped_Popcorn-gTQbm1DhSG3Ljh7YbbujYLjgK6D4kZ.png?RvS5", points: 1500, weight: 10 },
+          { name: 'taco', src: "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/taco-6vu6lQI3D05z2lVxkDNwY66TlFmGZB.png?8QoI", points: 2000, weight: 7 },
+          { name: 'chips', src: "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/chips-yCT3LzHWcoIydxPWGolox6QtwGTPep.png?KKaX", points: 2500, weight: 5 },
+          { name: 'capsule', points: -1000, weight: 13, isCapsule: true, variants: [
+            "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Capsule%201-d1UwbQbw6rCqLFTQF9wpAXrnbt7pWw.png?i4h0",
+            "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Capsule%202-Q4pPoC6aUQgEKksuEQJdn8kAwHkDAF.png?DgoW",
+            "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Capsule%203-uoj647l4VXQ3XfQP6Nduhd6fN8iS8G.png?oqtx"
+          ]},
+          { name: 'vinyl', src: "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Vinyl%20record-o2Ywer8docJKZmASb8SXaH9iYRcPwu.png?r3Wj", points: 2000, weight: 8, isVinyl: true }
+        ];
+
+        // ============================================
+        // LOAD IMAGES
+        // ============================================
+        const pipeTopImg = new Image();
+        pipeTopImg.src = "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/top%20pipe-1dln4doEfX8yhEYOfHcHBA5D14QW5B.png?JDsM";
+
+        const pipeBottomImg = new Image();
+        pipeBottomImg.src = "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/bottom%20pipe-eRpGCy6wgmm6783pnqGXqTCtjACYin.png?2Jcm";
+
+        const pipeDebrisImg = new Image();
+        pipeDebrisImg.src = "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/pipe%20debris-Z3xtbtcoda6KuKm3cAofZhngXzy6cd.png?SswC";
+
+        const musicNoteImg = new Image();
+        musicNoteImg.src = "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Music%20note-29BjE2q7GhOUwhfo1keSIb2AotujCs.png?Kem4";
+
+        const floorImg = new Image();
+        floorImg.src = "https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Floor-CcRLbIiTU8vXK6atUlLVJOt6nN65Cb.png?Oskl";
+
+        let playerImg = new Image();
+        let playerImgLoaded = false;
+
+        // Image cache for items
+        const imageCache = {};
+
+        function loadImage(src) {
+          if (imageCache[src]) {
+            return imageCache[src];
+          }
+          const img = new Image();
+          img.src = src;
+          imageCache[src] = img;
+          return img;
+        }
+
+        // Preload all item images at startup
+        function preloadItemImages() {
+          itemTypes.forEach(item => {
+            if (item.src) {
+              loadImage(item.src);
+            }
+            if (item.variants) {
+              item.variants.forEach(v => loadImage(v));
+            }
+          });
+        }
+
+        // ============================================
+        // GAME STATE
+        // ============================================
+        let gameState = 'splash'; // splash, countdown, playing, gameover, results
+        let score = 0;
+        let countdownValue = 3;
+        let countdownTimer = null;
+
+        // Beast selection (random)
+        let currentBeastName = null;
+        let currentBeastVariant = null;
+
+        // Bird physics
+        const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+        let baseGravity = isMobile ? 0.3 : 0.22;
+        let baseLift = isMobile ? -7.5 : -6;
+        let gravity = baseGravity;
+        let lift = baseLift;
+
+        let bird = { x: 0, y: 0, vy: 0, width: 90, height: 90 };
+        let birdScale = 1;
+        let targetScale = 1;
+
+        // Pipes
+        let pipes = [];
+        let pipeWidth = 60;
+        let pipeGap = isMobile ? 250 : 200;
+        let baseSpeed = isMobile ? 3.5 : 2.5;
+        let speed = baseSpeed;
+        let spawnTimer = 0;
+        const spawnInterval = isMobile ? 100 : 120;
+        let forceComboNext = true;
+        const FLOOR_HEIGHT = 60;
+
+        // Items
+        let items = [];
+        let floatTexts = [];
+        let itemsCollected = {
+          egg: 0, pizza: 0, burger: 0, popcorn: 0,
+          taco: 0, chips: 0, capsule: 0, vinyl: 0
+        };
+
+        // GO BIZARRE mode
+        let goBizarre = false;
+        let bizarreTimer = 0;
+        const BIZARRE_GOAL = 20;
+        const BIZARRE_DURATION = 900; // 15 seconds
+        let foodCollected = 0;
+        let ghostTrail = [];
+
+        // Effects
+        let slowed = false;
+        let slowTimer = 0;
+        let isShaking = false;
+        let shakeTimer = 0;
+        let frameCount = 0;
+
+        // Parallax background
+        let clouds = [];
+        let backBuildings = [];
+        let frontBuildings = [];
+
+        // ============================================
+        // RANDOM BEAST SELECTION
+        // ============================================
+        // Preloaded sprite cache
+        const preloadedSprites = {};
+
+        function preloadCharacterSprites(beastName, variant) {
+          const states = ['idle', 'bounce', 'go', 'bounceGo'];
+          states.forEach(state => {
+            const url = beastSkins[beastName][state][variant];
+            if (!preloadedSprites[url]) {
+              const img = new Image();
+              img.src = url;
+              preloadedSprites[url] = img;
+            }
+          });
+        }
+
+        function selectRandomBeast() {
+          const beasts = ['Bart', 'Louie'];
+          currentBeastName = beasts[Math.floor(Math.random() * beasts.length)];
+          currentBeastVariant = Math.floor(Math.random() * 4);
+
+          // Preload all sprite states for this character
+          preloadCharacterSprites(currentBeastName, currentBeastVariant);
+
+          // Use preloaded image if available
+          const idleUrl = beastSkins[currentBeastName].idle[currentBeastVariant];
+          if (preloadedSprites[idleUrl] && preloadedSprites[idleUrl].complete) {
+            playerImg = preloadedSprites[idleUrl];
+            playerImgLoaded = true;
+          } else {
+            playerImg = new Image();
+            playerImg.onload = () => { playerImgLoaded = true; };
+            playerImg.onerror = () => { playerImgLoaded = false; };
+            playerImg.src = idleUrl;
+          }
+        }
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        function initClouds() {
+          clouds = [];
+          // Better distributed clouds across the full screen width
+          const cloudConfigs = [
+            // Row 1 - top (4 clouds spread across)
+            { xBase: -0.05, y: 0.03, speed: 0.18 },
+            { xBase: 0.25, y: 0.04, speed: 0.15 },
+            { xBase: 0.55, y: 0.035, speed: 0.17 },
+            { xBase: 0.85, y: 0.038, speed: 0.16 },
+            // Row 2 (4 clouds)
+            { xBase: 0.05, y: 0.09, speed: 0.16 },
+            { xBase: 0.35, y: 0.095, speed: 0.14 },
+            { xBase: 0.65, y: 0.085, speed: 0.18 },
+            { xBase: 0.92, y: 0.09, speed: 0.15 },
+            // Row 3 (4 clouds)
+            { xBase: -0.08, y: 0.15, speed: 0.15 },
+            { xBase: 0.22, y: 0.155, speed: 0.17 },
+            { xBase: 0.52, y: 0.145, speed: 0.14 },
+            { xBase: 0.82, y: 0.15, speed: 0.16 },
+            // Row 4 (3 clouds)
+            { xBase: 0.1, y: 0.21, speed: 0.16 },
+            { xBase: 0.45, y: 0.22, speed: 0.15 },
+            { xBase: 0.78, y: 0.215, speed: 0.17 }
+          ];
+
+          cloudConfigs.forEach((config, i) => {
+            clouds.push({
+              x: cw * config.xBase + Math.random() * cw * 0.08,
+              y: ch * config.y,
+              width: cw * 0.09 + Math.random() * cw * 0.07,
+              speed: config.speed + Math.random() * 0.03,
+              row: Math.floor(i / 4)  // Track which row for recycling
+            });
+          });
+        }
+
+        // Pre-generate window pattern to avoid strobing
+        function generateWindowPattern(buildingWidth, buildingHeight) {
+          const windows = [];
+          if (buildingWidth < 35) return windows;  // Lower threshold for narrower buildings
+          const winSize = 8;
+          const padX = Math.max(8, buildingWidth * 0.12);  // Dynamic padding
+          const gapX = Math.max(12, buildingWidth * 0.18);  // Dynamic spacing
+          for (let wy = 15; wy + winSize < buildingHeight - 20; wy += 18) {
+            for (let wx = padX; wx + winSize < buildingWidth - padX; wx += gapX) {
+              if (Math.random() > 0.25) {  // More windows (75% chance)
+                windows.push({ x: wx, y: wy });
+              }
+            }
+          }
+          return windows;
+        }
+
+        function initBuildings() {
+          backBuildings = [];
+          frontBuildings = [];
+
+          let x = -50;
+          while (x < cw + 200) {
+            const w = cw * 0.08 + Math.random() * cw * 0.12;
+            const h = ch * 0.1 + Math.random() * ch * 0.15;
+            backBuildings.push({ x, width: w, height: h, color: BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)], speed: 0.5 });
+            x += w + 5 + Math.random() * 15;
+          }
+
+          x = -30;
+          while (x < cw + 200) {
+            const w = Math.max(50, cw * 0.12 + Math.random() * cw * 0.15);  // Min 50px for windows
+            const h = ch * 0.15 + Math.random() * ch * 0.2;
+            frontBuildings.push({
+              x, width: w, height: h,
+              color: BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)],
+              speed: 1.0,
+              windows: generateWindowPattern(w, h)
+            });
+            x += w + 8 + Math.random() * 20;
+          }
+        }
+
+        function resetGame() {
+          bird.x = cw * 0.25;
+          bird.y = ch / 2;
+          bird.vy = 0;
+          bird.width = 90;
+          bird.height = 90;
+
+          gravity = baseGravity;
+          lift = baseLift;
+          speed = baseSpeed;
+
+          slowed = false;
+          slowTimer = 0;
+          isShaking = false;
+          shakeTimer = 0;
+
+          goBizarre = false;
+          bizarreTimer = 0;
+          birdScale = 1;
+          targetScale = 1;
+          foodCollected = 0;
+          ghostTrail = [];
+
+          pipes = [];
+          items = [];
+          floatTexts = [];
+          spawnTimer = 0;
+          score = 0;
+          itemsCollected = { egg: 0, pizza: 0, burger: 0, popcorn: 0, taco: 0, chips: 0, capsule: 0, vinyl: 0 };
+
+          pipeGap = isMobile ? 250 : 200;
+
+          // Note: selectRandomBeast() removed - character preserved from splash
+          initClouds();
+          initBuildings();
+
+          bizarreBar.style.display = 'block';
+          bizarreFill.style.width = '0%';
+          scoreEl.classList.remove('pulse');
+        }
+
+        // ============================================
+        // DRAWING FUNCTIONS
+        // ============================================
+        function drawSunsetGradient() {
+          const gradient = ctx.createLinearGradient(0, 0, 0, ch);
+          gradient.addColorStop(0, COLORS.skyTop);
+          gradient.addColorStop(0.5, COLORS.skyMid);
+          gradient.addColorStop(1, COLORS.skyBottom);
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, cw, ch);
+        }
+
+        function drawCloud(cloud) {
+          const { x, y, width } = cloud;
+          const height = Math.max(15, width * 0.25);
+          const numBumps = Math.max(2, Math.floor(width / 35));
+          const bumpSpacing = width / (numBumps + 1);
+
+          ctx.fillStyle = COLORS.outlineBlack;
+          ctx.beginPath();
+          ctx.roundRect(x - 3, y - 3, width + 6, height + 6, (height + 6) / 2);
+          ctx.fill();
+
+          for (let i = 1; i <= numBumps; i++) {
+            const bx = x + i * bumpSpacing;
+            const br = 12 + (i % 2) * 3;
+            ctx.beginPath();
+            ctx.arc(bx, y - 4, br + 3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.fillStyle = COLORS.cloudPink;
+          ctx.beginPath();
+          ctx.roundRect(x, y, width, height, height / 2);
+          ctx.fill();
+
+          for (let i = 1; i <= numBumps; i++) {
+            const bx = x + i * bumpSpacing;
+            const br = 12 + (i % 2) * 3;
+            ctx.beginPath();
+            ctx.arc(bx, y - 4, br, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        function drawBuilding(b, isBack) {
+          const y = ch - FLOOR_HEIGHT - b.height;
+          ctx.globalAlpha = isBack ? 0.7 : 1;
+          ctx.fillStyle = b.color;
+          ctx.beginPath();
+          ctx.roundRect(b.x, y, b.width, b.height + FLOOR_HEIGHT, 5);
+          ctx.fill();
+          ctx.strokeStyle = COLORS.outlineBlack;
+          ctx.lineWidth = isBack ? 2 : 3;
+          ctx.stroke();
+
+          // Draw pre-generated windows (no strobing)
+          if (!isBack && b.windows) {
+            ctx.fillStyle = '#2f2f4f';
+            b.windows.forEach(w => {
+              ctx.fillRect(b.x + w.x, y + w.y, 8, 8);
+            });
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        function drawFloor() {
+          if (floorImg.complete && floorImg.naturalWidth > 0) {
+            ctx.drawImage(floorImg, 0, ch - FLOOR_HEIGHT, cw, FLOOR_HEIGHT);
+          } else {
+            ctx.fillStyle = COLORS.floorTeal;
+            ctx.fillRect(0, ch - FLOOR_HEIGHT, cw, FLOOR_HEIGHT);
+          }
+          ctx.strokeStyle = COLORS.outlineBlack;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(0, ch - FLOOR_HEIGHT);
+          ctx.lineTo(cw, ch - FLOOR_HEIGHT);
+          ctx.stroke();
+        }
+
+        function drawPipe(p) {
+          const img = p.isTop ? pipeTopImg : pipeBottomImg;
+          if (img.complete && img.naturalWidth > 0) {
+            const aspectRatio = img.naturalHeight / img.naturalWidth;
+            const pipeHeight = pipeWidth * aspectRatio;
+
+            // Simplified outline using shadow blur (much faster than multiple draws)
+            ctx.shadowColor = COLORS.outlineBlack;
+            ctx.shadowBlur = 3;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            if (p.isTop) {
+              const y = p.y + p.h - pipeHeight;
+              ctx.drawImage(img, p.x, y, pipeWidth, pipeHeight);
+            } else {
+              ctx.drawImage(img, p.x, p.y, pipeWidth, pipeHeight);
+            }
+
+            // Reset shadow
+            ctx.shadowBlur = 0;
+          }
+        }
+
+        function drawBird() {
+          ctx.save();
+
+          // Ghost trail during bizarre
+          if (goBizarre) {
+            ghostTrail.push({
+              x: bird.x, y: bird.y,
+              w: bird.width * birdScale,
+              h: bird.height * birdScale,
+              opacity: 0.6
+            });
+            if (ghostTrail.length > 3) ghostTrail.shift();
+
+            ghostTrail.forEach(g => {
+              ctx.globalAlpha = g.opacity;
+              if (playerImgLoaded) {
+                ctx.drawImage(playerImg, g.x, g.y, g.w, g.h);
+              }
+              g.opacity -= 0.05;
+            });
+            ctx.globalAlpha = 1;
+          }
+
+          // Shake effect (gentle sway)
+          let shakeX = 0;
+          if (isShaking) {
+            shakeX = Math.sin(frameCount * 0.12) * 4;
+          }
+
+          // Slowdown glow
+          if (slowed) {
+            ctx.shadowColor = 'red';
+            ctx.shadowBlur = 20 + Math.sin(frameCount * 0.1) * 5;
+          }
+
+          const drawWidth = bird.width * birdScale;
+          const drawHeight = bird.height * birdScale;
+
+          if (playerImgLoaded) {
+            ctx.drawImage(playerImg, bird.x + shakeX, bird.y, drawWidth, drawHeight);
+          } else {
+            ctx.fillStyle = '#32cd32';
+            ctx.beginPath();
+            ctx.arc(bird.x + drawWidth/2, bird.y + drawHeight/2, drawWidth/2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          }
+
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+
+        function drawItems() {
+          items.forEach(i => {
+            if (!i.collected) {
+              if (i.points < 0) {
+                ctx.beginPath();
+                ctx.arc(i.x, i.y, i.r + 10 + Math.sin(frameCount * 0.05) * 3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,0,0,0.3)';
+                ctx.fill();
+              }
+              if (i.img && i.img.complete && i.img.naturalWidth > 0) {
+                ctx.drawImage(i.img, i.x - i.r, i.y - i.r, i.r * 2, i.r * 2);
+              }
+            }
+          });
+        }
+
+        function drawFloatTexts() {
+          for (let i = floatTexts.length - 1; i >= 0; i--) {
+            const ft = floatTexts[i];
+
+            if (ft.isDebris) {
+              ctx.globalAlpha = ft.alpha;
+              if (pipeDebrisImg.complete) {
+                ctx.drawImage(pipeDebrisImg, ft.x, ft.y, ft.size, ft.size);
+              }
+              ctx.globalAlpha = 1;
+              ft.x += ft.vx;
+              ft.y += ft.vy;
+              ft.vy += 0.2;
+              ft.alpha -= 0.01;
+              if (ft.y > ch || ft.alpha <= 0) floatTexts.splice(i, 1);
+              continue;
+            }
+
+            if (ft.isNote) {
+              ctx.globalAlpha = ft.alpha;
+              if (musicNoteImg.complete) {
+                ctx.drawImage(musicNoteImg, ft.x, ft.y, ft.size, ft.size);
+              }
+              ctx.globalAlpha = 1;
+              ft.x += ft.vx;
+              ft.y += ft.vy;
+              ft.alpha -= 0.006;  // Slower fade for music notes
+              if (ft.alpha <= 0) floatTexts.splice(i, 1);
+              continue;
+            }
+
+            ctx.font = 'bold 24px Slackey';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'black';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            ctx.fillStyle = ft.color === 'limegreen' ? `rgba(50,205,50,${ft.alpha})` : `rgba(255,50,50,${ft.alpha})`;
+            ctx.fillText(ft.text, ft.x, ft.y);
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            ft.y -= 0.5;  // Slower float
+            ft.alpha -= goBizarre ? 0.006 : 0.01;  // ~3 seconds visibility
+            if (ft.alpha <= 0) floatTexts.splice(i, 1);
+          }
+        }
+
+        function drawSplash() {
+          drawSunsetGradient();
+          clouds.forEach(c => drawCloud(c));
+          backBuildings.forEach(b => drawBuilding(b, true));
+          frontBuildings.forEach(b => drawBuilding(b, false));
+          drawFloor();
+
+          // Yellow title (no glow)
+          ctx.save();
+          const fontSize = Math.min(cw * 0.14, 56);
+          ctx.font = `${fontSize}px Slackey`;
+          ctx.fillStyle = '#ffdd00';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 6;
+          ctx.textAlign = 'center';
+
+          const titleY = ch * 0.18;
+          ctx.strokeText('BIZARRE', cw / 2, titleY);
+          ctx.fillText('BIZARRE', cw / 2, titleY);
+          ctx.strokeText('BOUNCE', cw / 2, titleY + fontSize * 1.1);
+          ctx.fillText('BOUNCE', cw / 2, titleY + fontSize * 1.1);
+          ctx.restore();
+
+          // Yellow play button position
+          const btnSize = Math.min(cw * 0.2, 80);
+          const btnY = ch * 0.78;
+
+          // Floating bird - centered between title and button
+          const titleBottom = titleY + fontSize * 1.1 + 20;
+          const btnTop = btnY - btnSize / 2;
+          const centerY = (titleBottom + btnTop) / 2;
+          bird.y = centerY - bird.height / 2 + Math.sin(Date.now() / 300) * 12;
+          bird.x = cw / 2 - bird.width / 2;
+          drawBird();
+
+          // Button (no glow)
+          ctx.save();
+          ctx.fillStyle = '#ffdd00';
+          ctx.beginPath();
+          ctx.arc(cw / 2, btnY, btnSize / 2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Button outline
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 4;
+          ctx.stroke();
+
+          // Play triangle
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          const triSize = btnSize * 0.35;
+          const triX = cw / 2 - triSize * 0.3;
+          ctx.moveTo(triX, btnY - triSize * 0.5);
+          ctx.lineTo(triX, btnY + triSize * 0.5);
+          ctx.lineTo(triX + triSize * 0.8, btnY);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+
+        function drawGame() {
+          drawSunsetGradient();
+          clouds.forEach(c => drawCloud(c));
+          backBuildings.forEach(b => drawBuilding(b, true));
+          frontBuildings.forEach(b => drawBuilding(b, false));
+          drawFloor();
+          pipes.forEach(p => drawPipe(p));
+          drawItems();
+          drawBird();
+          drawFloatTexts();
+
+        }
+
+        function drawGameOver() {
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(0, 0, cw, ch);
+
+          ctx.save();
+          ctx.shadowColor = '#ff1493';
+          ctx.shadowBlur = 15;
+
+          const fontSize = Math.min(cw * 0.12, 48);
+          ctx.font = `${fontSize}px Slackey`;
+          ctx.fillStyle = '#fff';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 6;
+          ctx.textAlign = 'center';
+          ctx.strokeText('GAME OVER', cw / 2, ch * 0.35);
+          ctx.fillText('GAME OVER', cw / 2, ch * 0.35);
+
+          const scoreFontSize = Math.min(cw * 0.08, 32);
+          ctx.font = `${scoreFontSize}px Slackey`;
+          ctx.strokeText('Score: ' + score, cw / 2, ch * 0.48);
+          ctx.fillText('Score: ' + score, cw / 2, ch * 0.48);
+          ctx.restore();
+
+          const alpha = 0.5 + Math.sin(Date.now() / 400) * 0.5;
+          ctx.globalAlpha = alpha;
+          ctx.font = `${Math.min(cw * 0.06, 24)}px Slackey`;
+          ctx.strokeText('TAP TO RESTART', cw / 2, ch * 0.65);
+          ctx.fillText('TAP TO RESTART', cw / 2, ch * 0.65);
+          ctx.globalAlpha = 1;
+        }
+
+        function drawResults() {
+          // Dark overlay
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fillRect(0, 0, cw, ch);
+
+          ctx.save();
+
+          // Card dimensions
+          const cardW = Math.min(cw * 0.9, 340);
+          const cardH = Math.min(ch * 0.72, 480);
+          const cardX = (cw - cardW) / 2;
+          const cardY = (ch - cardH) / 2;
+
+          // Card glow
+          ctx.shadowColor = '#ffcc00';
+          ctx.shadowBlur = 25;
+          ctx.fillStyle = 'rgba(255, 204, 0, 0.15)';
+          ctx.beginPath();
+          ctx.roundRect(cardX - 6, cardY - 6, cardW + 12, cardH + 12, 20);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Card background
+          ctx.fillStyle = 'rgba(26, 26, 46, 0.95)';
+          ctx.beginPath();
+          ctx.roundRect(cardX, cardY, cardW, cardH, 16);
+          ctx.fill();
+          ctx.strokeStyle = '#ffcc00';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          // "GAME OVER" title - YELLOW
+          const titleSize = Math.min(cardW * 0.12, 36);
+          ctx.font = `${titleSize}px Slackey`;
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#ffdd00';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 4;
+          ctx.strokeText('GAME OVER', cw / 2, cardY + 50);
+          ctx.fillText('GAME OVER', cw / 2, cardY + 50);
+
+          // Large score with glow - right below title
+          ctx.shadowColor = '#ffff00';
+          ctx.shadowBlur = 20;
+          const scoreSize = Math.min(cardW * 0.2, 64);
+          ctx.font = `${scoreSize}px Slackey`;
+          ctx.fillStyle = '#ffdd00';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 5;
+          ctx.strokeText(score.toLocaleString(), cw / 2, cardY + 115);
+          ctx.fillText(score.toLocaleString(), cw / 2, cardY + 115);
+          ctx.shadowBlur = 0;
+
+          // "SCORE" label
+          ctx.font = `${Math.min(cardW * 0.045, 16)}px Slackey`;
+          ctx.fillStyle = '#888';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 2;
+          ctx.strokeText('SCORE', cw / 2, cardY + 140);
+          ctx.fillText('SCORE', cw / 2, cardY + 140);
+
+          // Divider line
+          const leftX = cardX + 25;
+          const rightX = cardX + cardW - 25;
+          ctx.strokeStyle = 'rgba(255, 204, 0, 0.4)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(leftX, cardY + 160);
+          ctx.lineTo(rightX, cardY + 160);
+          ctx.stroke();
+
+          // Item points config
+          const itemPoints = {
+            egg: 250, pizza: 500, burger: 1000, popcorn: 1500,
+            taco: 2000, chips: 2500, vinyl: 2000, capsule: -1000
+          };
+          const itemColors = {
+            egg: '#ffffff', pizza: '#ff6644', burger: '#ff8844', popcorn: '#ffdd00',
+            taco: '#ffcc00', chips: '#00ffcc', vinyl: '#aa00ff', capsule: '#ff0066'
+          };
+
+          // Items list (only show collected items)
+          const displayItems = ['egg', 'pizza', 'burger', 'popcorn', 'taco', 'chips', 'vinyl', 'capsule'];
+          const collectedItems = displayItems.filter(name => itemsCollected[name] > 0);
+
+          const rowHeight = Math.min(26, cardH * 0.05);
+          const itemFont = Math.min(cardW * 0.05, 16);
+          ctx.font = `${itemFont}px Slackey`;
+          let currentY = cardY + 185;
+
+          collectedItems.slice(0, 6).forEach(name => {  // Max 6 items shown
+            const count = itemsCollected[name];
+            const pts = itemPoints[name] * count;
+            const color = itemColors[name];
+
+            // Item name and count (left)
+            ctx.textAlign = 'left';
+            ctx.fillStyle = color;
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.strokeText(`${name.charAt(0).toUpperCase() + name.slice(1)} x${count}`, leftX, currentY);
+            ctx.fillText(`${name.charAt(0).toUpperCase() + name.slice(1)} x${count}`, leftX, currentY);
+
+            // Points (right)
+            ctx.textAlign = 'right';
+            ctx.fillStyle = pts > 0 ? '#00ff88' : '#ff0066';
+            const ptsText = pts > 0 ? `+${pts}` : `${pts}`;
+            ctx.strokeText(ptsText, rightX, currentY);
+            ctx.fillText(ptsText, rightX, currentY);
+
+            currentY += rowHeight;
+          });
+
+          if (collectedItems.length === 0) {
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#666';
+            ctx.fillText('No items collected', cw / 2, currentY);
+          }
+
+          // Yellow PLAY button in the middle-bottom
+          const btnSize = Math.min(cardW * 0.22, 70);
+          const btnY = cardY + cardH - btnSize - 30;
+
+          // Button glow
+          ctx.shadowColor = '#ffcc00';
+          ctx.shadowBlur = 15;
+          ctx.fillStyle = '#ffdd00';
+          ctx.beginPath();
+          ctx.arc(cw / 2, btnY, btnSize / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Button outline
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 4;
+          ctx.stroke();
+
+          // Play triangle
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          const triSize = btnSize * 0.35;
+          const triX = cw / 2 - triSize * 0.3;
+          ctx.moveTo(triX, btnY - triSize * 0.5);
+          ctx.lineTo(triX, btnY + triSize * 0.5);
+          ctx.lineTo(triX + triSize * 0.8, btnY);
+          ctx.closePath();
+          ctx.fill();
+
+          // "TAP TO CONTINUE" below button
+          const tapAlpha = 0.5 + Math.sin(Date.now() / 400) * 0.3;
+          ctx.globalAlpha = tapAlpha;
+          ctx.font = `${Math.min(cardW * 0.04, 14)}px Slackey`;
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#fff';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 2;
+          ctx.strokeText('TAP TO CONTINUE', cw / 2, btnY + btnSize / 2 + 20);
+          ctx.fillText('TAP TO CONTINUE', cw / 2, btnY + btnSize / 2 + 20);
+          ctx.globalAlpha = 1;
+
+          ctx.restore();
+        }
+
+        // ============================================
+        // UPDATE FUNCTIONS
+        // ============================================
+        function updateClouds(delta) {
+          // Row Y positions for recycling
+          const rowYs = [0.035, 0.09, 0.15, 0.215];
+
+          clouds.forEach((c) => {
+            // Gentle constant drift - visible but not fast
+            c.x -= c.speed * 0.8 * delta;
+            if (c.x + c.width < -80) {
+              // Find the rightmost cloud in the same row
+              const sameRowClouds = clouds.filter(cloud => cloud.row === c.row && cloud !== c);
+              const rightmostX = sameRowClouds.length > 0
+                ? Math.max(...sameRowClouds.map(cloud => cloud.x + cloud.width))
+                : cw;
+
+              // Place this cloud after the rightmost one with consistent spacing
+              const spacing = cw * 0.25 + Math.random() * cw * 0.1;
+              c.x = Math.max(cw, rightmostX) + spacing;
+
+              // Keep same row Y with slight variation
+              const baseY = rowYs[c.row] || 0.1;
+              c.y = ch * baseY + Math.random() * ch * 0.015;
+              c.width = cw * 0.09 + Math.random() * cw * 0.07;
+            }
+          });
+        }
+
+        function updateBuildings(delta) {
+          backBuildings.forEach(b => {
+            b.x -= b.speed * speed * 0.3 * delta;
+            if (b.x + b.width < -50) {
+              const rightmost = Math.max(...backBuildings.map(bb => bb.x + bb.width));
+              b.x = rightmost + 5 + Math.random() * 15;
+              b.width = cw * 0.08 + Math.random() * cw * 0.12;
+              b.height = ch * 0.1 + Math.random() * ch * 0.15;
+              b.color = BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)];
+            }
+          });
+
+          frontBuildings.forEach(b => {
+            b.x -= b.speed * speed * 0.5 * delta;
+            if (b.x + b.width < -50) {
+              const rightmost = Math.max(...frontBuildings.map(bb => bb.x + bb.width));
+              b.x = rightmost + 8 + Math.random() * 20;
+              b.width = Math.max(50, cw * 0.12 + Math.random() * cw * 0.15);  // Min 50px
+              b.height = ch * 0.15 + Math.random() * ch * 0.2;
+              b.color = BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)];
+              b.windows = generateWindowPattern(b.width, b.height);
+            }
+          });
+        }
+
+        function choosePipePattern() {
+          if (forceComboNext) {
+            forceComboNext = false;
+            return 'both';
+          } else {
+            forceComboNext = true;
+            const r = Math.random();
+            if (r < 0.33) return 'top-only';
+            if (r < 0.66) return 'bottom-only';
+            return 'both';
+          }
+        }
+
+        function getRandomItem() {
+          const total = itemTypes.reduce((sum, i) => sum + i.weight, 0);
+          let r = Math.random() * total;
+          for (let item of itemTypes) {
+            if (r < item.weight) return item;
+            r -= item.weight;
+          }
+          return itemTypes[0];
+        }
+
+        function spawnPipeAndItems() {
+          const pattern = choosePipePattern();
+          const topH = Math.random() * (ch - pipeGap - 200) + 100;
+
+          if (pattern === 'both') {
+            pipes.push({ x: cw, y: 0, h: topH, isTop: true });
+            pipes.push({ x: cw, y: topH + pipeGap, h: ch - topH - pipeGap + 100, isTop: false });
+          } else if (pattern === 'top-only') {
+            pipes.push({ x: cw, y: 0, h: topH, isTop: true });
+          } else if (pattern === 'bottom-only') {
+            pipes.push({ x: cw, y: topH + pipeGap, h: ch - topH - pipeGap + 100, isTop: false });
+          }
+
+          // Spawn item in gap
+          const item = getRandomItem();
+          const itemY = topH + pipeGap / 2 + (Math.random() - 0.5) * pipeGap * 0.4;
+          const itemX = cw + pipeWidth * 1.5 + Math.random() * 50;
+
+          let imgSrc = item.isCapsule ? item.variants[Math.floor(Math.random() * item.variants.length)] : item.src;
+
+          items.push({
+            x: itemX,
+            y: itemY,
+            r: 30,
+            img: loadImage(imgSrc),
+            points: item.points,
+            name: item.name,
+            isCapsule: item.isCapsule || false,
+            isVinyl: item.isVinyl || false,
+            collected: false
+          });
+        }
+
+        function spawnFloatingNotes(x, y) {
+          for (let i = 0; i < 8; i++) {
+            setTimeout(() => {
+              floatTexts.push({
+                isNote: true,
+                x: x + (Math.random() - 0.5) * 40,
+                y: y + (Math.random() - 0.5) * 20,
+                vy: -0.6 - Math.random() * 0.4,
+                vx: (Math.random() - 0.5) * 0.6,
+                alpha: 1,
+                size: 24 + Math.random() * 8
+              });
+            }, i * 600);  // Slower spawn rate
+          }
+          isShaking = true;
+          shakeTimer = 450;  // ~7.5 seconds to match music notes duration
+        }
+
+        function activateGoBizarre() {
+          goBizarre = true;
+          bizarreTimer = BIZARRE_DURATION;
+          targetScale = 2;
+          speed *= 4;
+
+          if (currentBeastName && currentBeastVariant !== null) {
+            const goUrl = beastSkins[currentBeastName].go[currentBeastVariant];
+            if (preloadedSprites[goUrl]) {
+              playerImg = preloadedSprites[goUrl];
+            } else {
+              playerImg.src = goUrl;
+            }
+          }
+
+          score += 5000;
+          floatTexts.push({
+            text: '+5000 GO BIZARRE!',
+            x: bird.x + bird.width / 2,
+            y: bird.y - 30,
+            alpha: 1,
+            color: 'limegreen'
+          });
+
+          // Show bar as countdown timer (starts full)
+          bizarreFill.style.background = 'linear-gradient(90deg, #ffcc00, #ff6600)';
+          bizarreFill.style.width = '100%';
+          scoreEl.classList.add('pulse');
+        }
+
+        // ============================================
+        // INPUT
+        // ============================================
+        function jump() {
+          if (gameState === 'splash') {
+            resetGame();
+            startCountdown();
+            return;
+          }
+
+          if (gameState === 'gameover') {
+            gameState = 'results';
+            return;
+          }
+
+          if (gameState === 'results') {
+            reportGameOver(score);  // Opens Remix game over screen
+            return;
+          }
+
+          if (gameState !== 'playing') return;
+
+          bird.vy = lift;
+          triggerHaptic();
+
+          if (currentBeastName && currentBeastVariant !== null) {
+            const bounceUrl = goBizarre
+              ? beastSkins[currentBeastName].bounceGo[currentBeastVariant]
+              : beastSkins[currentBeastName].bounce[currentBeastVariant];
+            const idleUrl = goBizarre
+              ? beastSkins[currentBeastName].go[currentBeastVariant]
+              : beastSkins[currentBeastName].idle[currentBeastVariant];
+
+            // Use preloaded sprite if available
+            if (preloadedSprites[bounceUrl]) {
+              playerImg = preloadedSprites[bounceUrl];
+            } else {
+              playerImg.src = bounceUrl;
+            }
+
+            setTimeout(() => {
+              if (preloadedSprites[idleUrl]) {
+                playerImg = preloadedSprites[idleUrl];
+              } else {
+                playerImg.src = idleUrl;
+              }
+            }, 200);
+          }
+        }
+
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); }, { passive: false });
+        document.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); jump(); } });
+
+        // ============================================
+        // COUNTDOWN
+        // ============================================
+        function startCountdown() {
+          gameState = 'countdown';
+          countdownValue = 3;
+          scoreEl.style.display = 'block';  // Show HUD
+          scoreEl.textContent = `${countdownValue}`;
+
+          countdownTimer = setInterval(() => {
+            countdownValue--;
+            if (countdownValue > 0) {
+              scoreEl.textContent = `${countdownValue}`;
+            } else {
+              clearInterval(countdownTimer);
+              gameState = 'playing';
+              signalReady();
+              lastTime = performance.now();
+              requestAnimationFrame(gameLoop);
+            }
+          }, 400);  // Faster countdown (400ms per number)
+        }
+
+        // ============================================
+        // GAME OVER
+        // ============================================
+        function gameOver() {
+          gameState = 'results';  // Go straight to results
+          bird.width = 90;
+          bird.height = 90;
+        }
+
+        // ============================================
+        // SDK EVENTS
+        // ============================================
+        if (window.FarcadeSDK) {
+          window.FarcadeSDK.on?.('play_again', () => {
+            selectRandomBeast();  // NEW random character on play again
+            gameState = 'splash';
+            scoreEl.style.display = 'none';  // Hide HUD on splash
+            bizarreBar.style.display = 'none';
+            resetGame();
+          });
+          window.FarcadeSDK.on?.('toggle_mute', () => {});
+        }
+
+        // ============================================
+        // GAME LOOP
+        // ============================================
+        let lastTime = performance.now();
+
+        function gameLoop(currentTime = performance.now()) {
+          const delta = (currentTime - lastTime) / (1000 / 60);
+          lastTime = currentTime;
+          frameCount++;
+
+          if (gameState === 'playing') {
+            // Physics
+            bird.vy += gravity * delta;
+            bird.vy += 0.02 * Math.abs(bird.vy) * delta;
+            bird.y += bird.vy * delta;
+
+            // Scale smoothing
+            const diff = targetScale - birdScale;
+            if (Math.abs(diff) > 0.01) {
+              birdScale += diff * 0.05;
+            } else {
+              birdScale = targetScale;
+            }
+
+            // Slowdown timer
+            if (slowed) {
+              slowTimer--;
+              if (slowTimer <= 0) {
+                slowed = false;
+                lift = baseLift;
+              }
+            }
+
+            // Bizarre timer
+            if (goBizarre) {
+              bizarreTimer--;
+              // Update countdown bar
+              const remaining = (bizarreTimer / BIZARRE_DURATION) * 100;
+              bizarreFill.style.width = `${remaining}%`;
+
+              if (bizarreTimer <= 0) {
+                targetScale = 1;
+                speed = baseSpeed;
+                goBizarre = false;
+                if (currentBeastName && currentBeastVariant !== null) {
+                  const idleUrl = beastSkins[currentBeastName].idle[currentBeastVariant];
+                  if (preloadedSprites[idleUrl]) {
+                    playerImg = preloadedSprites[idleUrl];
+                  } else {
+                    playerImg.src = idleUrl;
+                  }
+                }
+                // Reset bar to pink gradient and 0%
+                bizarreFill.style.background = 'linear-gradient(90deg, #ff69b4, #ffcc00)';
+                bizarreFill.style.width = '0%';
+                scoreEl.classList.remove('pulse');
+              }
+            }
+
+            // Shake timer
+            if (isShaking) {
+              shakeTimer--;
+              if (shakeTimer <= 0) isShaking = false;
+            }
+
+            // Distance score
+            score += Math.floor(100 * (delta / 60));
+
+            // Spawning
+            spawnTimer += delta;
+            if (spawnTimer >= spawnInterval) {
+              spawnTimer = 0;
+              spawnPipeAndItems();
+            }
+
+            // Move pipes and items
+            pipes.forEach(p => p.x -= speed * delta);
+            items.forEach(i => i.x -= speed * delta);
+            pipes = pipes.filter(p => p.x + pipeWidth > 0);
+            items = items.filter(i => i.x + i.r > 0 && !i.collected);
+
+            // Update parallax
+            updateClouds(delta);
+            updateBuildings(delta);
+
+            // Pipe collisions
+            pipes.forEach((p, idx) => {
+              const padding = 10;
+              const pipeLeft = p.x + padding;
+              const pipeRight = p.x + pipeWidth - padding;
+              const pipeTop = p.y + padding;
+              const pipeBottom = p.y + p.h - padding;
+
+              const cx = bird.x + (bird.width * birdScale) / 2;
+              const cy = bird.y + (bird.height * birdScale) / 2;
+              const baseRadius = bird.width * 0.4;
+              const radius = goBizarre ? baseRadius * 2 : baseRadius;
+
+              const closestX = Math.max(pipeLeft, Math.min(cx, pipeRight));
+              const closestY = Math.max(pipeTop, Math.min(cy, pipeBottom));
+              const dx = cx - closestX;
+              const dy = cy - closestY;
+
+              if (dx * dx + dy * dy < radius * radius) {
+                if (goBizarre) {
+                  floatTexts.push({ text: '+2000', x: p.x + pipeWidth / 2, y: p.y + p.h / 2, alpha: 1, color: 'limegreen' });
+                  score += 2000;
+                  for (let s = 0; s < 6; s++) {
+                    floatTexts.push({
+                      isDebris: true,
+                      x: p.x + Math.random() * pipeWidth,
+                      y: p.y + Math.random() * p.h,
+                      vx: (Math.random() - 0.5) * 2,
+                      vy: Math.random() * -2,
+                      size: 24,
+                      alpha: 1
+                    });
+                  }
+                  pipes.splice(idx, 1);
+                } else {
+                  triggerHaptic();
+                  gameOver();
+                }
+              }
+            });
+
+            // Item collisions
+            items.forEach(i => {
+              if (i.collected) return;
+              const dx = bird.x + bird.width / 2 - i.x;
+              const dy = bird.y + bird.height / 2 - i.y;
+              if (Math.hypot(dx, dy) < i.r + bird.width / 2) {
+                i.collected = true;
+                itemsCollected[i.name]++;  // Track collection
+
+                if (i.isVinyl) {
+                  spawnFloatingNotes(i.x, i.y);
+                }
+
+                if (i.isCapsule && !goBizarre) {
+                  slowed = true;
+                  slowTimer = 180;
+                  lift = isMobile ? -4 : -3;
+                }
+
+                let pointsToAdd = i.points;
+                if (i.points > 0 && goBizarre) {
+                  pointsToAdd *= 2;
+                }
+                score += pointsToAdd;
+
+                floatTexts.push({
+                  text: (pointsToAdd > 0 ? '+' : '') + pointsToAdd,
+                  x: bird.x + bird.width / 2,
+                  y: bird.y,
+                  alpha: 1,
+                  color: pointsToAdd > 0 ? 'limegreen' : 'red'
+                });
+
+                if (i.points > 0 && !goBizarre) {
+                  foodCollected++;
+                  bizarreFill.style.width = `${(Math.min(foodCollected, BIZARRE_GOAL) / BIZARRE_GOAL) * 100}%`;
+                  if (foodCollected >= BIZARRE_GOAL) {
+                    activateGoBizarre();
+                    foodCollected = 0;
+                  }
+                }
+
+                triggerHaptic();
+              }
+            });
+
+            // Bounds check
+            if (bird.y > ch - FLOOR_HEIGHT || bird.y + bird.height < 0) {
+              triggerHaptic();
+              gameOver();
+            }
+
+            // Update score display
+            if (!goBizarre) {
+              scoreEl.textContent = `Score: ${score} | GO BIZARRE: ${Math.min(foodCollected, BIZARRE_GOAL)}/${BIZARRE_GOAL}`;
+            } else {
+              scoreEl.textContent = `Score: ${score} | GO BIZARRE!`;
+            }
+          }
+
+          // Render
+          ctx.clearRect(0, 0, cw, ch);
+
+          if (gameState === 'splash') {
+            updateClouds(1);
+            drawSplash();
+          } else if (gameState === 'countdown') {
+            drawGame();
+          } else if (gameState === 'playing') {
+            drawGame();
+          } else if (gameState === 'gameover') {
+            drawGame();
+            drawGameOver();
+          } else if (gameState === 'results') {
+            drawGame();
+            drawResults();
+          }
+
+          requestAnimationFrame(gameLoop);
+        }
+
+        // ============================================
+        // START
+        // ============================================
+        preloadItemImages();  // Preload all item images for smooth gameplay
+        selectRandomBeast();
+        initClouds();
+        initBuildings();
+        gameLoop();
+        console.log('Bizarre Bounce loaded!');
+      }
+    </script>
+  
+
+<script>"use strict";var Game=(()=>{var a=Object.defineProperty;var t=Object.getOwnPropertyDescriptor;var m=Object.getOwnPropertyNames;var c=Object.prototype.hasOwnProperty;var d=(e,i)=>{for(var n in i)a(e,n,{get:i[n],enumerable:!0})},u=(e,i,n,l)=>{if(i&&typeof i=="object"||typeof i=="function")for(let o of m(i))!c.call(e,o)&&o!==n&&a(e,o,{get:()=>i[o],enumerable:!(l=t(i,o))||l.enumerable});return e};var G=e=>u(a({},"__esModule",{value:!0}),e);var g={};d(g,{initGame:()=>f});function f(){}return G(g);})();
+</script></body></html>
