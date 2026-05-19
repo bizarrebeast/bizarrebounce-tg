@@ -72,6 +72,29 @@
         border-radius: 4px;
         transition: width 0.3s ease;
       }
+      #share-btn {
+        position: absolute;
+        bottom: 8%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: none;
+        background: #ff69b4;
+        color: #000;
+        border: 4px solid #000;
+        border-radius: 999px;
+        padding: 14px 32px;
+        font-family: 'Slackey', sans-serif;
+        font-size: clamp(14px, 4vw, 20px);
+        cursor: pointer;
+        z-index: 200;
+        box-shadow: 0 4px 0 #000;
+        touch-action: manipulation;
+        white-space: nowrap;
+      }
+      #share-btn:active {
+        transform: translateX(-50%) translateY(2px);
+        box-shadow: 0 2px 0 #000;
+      }
     </style>
   </head>
   <body>
@@ -79,6 +102,7 @@
       <canvas id="game"></canvas>
       <div id="score"></div>
       <div id="bizarre-bar" style="display:none"><div id="bizarre-fill"></div></div>
+      <button id="share-btn">SHARE SCORE</button>
     </div>
 
     
@@ -186,6 +210,17 @@
         const scoreEl = document.getElementById('score');
         const bizarreBar = document.getElementById('bizarre-bar');
         const bizarreFill = document.getElementById('bizarre-fill');
+        const shareBtn = document.getElementById('share-btn');
+
+        shareBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!inTelegram) return;
+          const params = new URLSearchParams({
+            url: 'https://t.me/BizarreBeastsBot/bbbounce?startapp=share',
+            text: 'I scored ' + score.toLocaleString() + ' in Bizarre Bounce. Beat me 👾',
+          });
+          try { TG.openTelegramLink('https://t.me/share/url?' + params.toString()); } catch (e) {}
+        });
 
         let cw, ch;
         function resizeCanvas() {
@@ -571,6 +606,7 @@
           bizarreBar.style.display = 'block';
           bizarreFill.style.width = '0%';
           scoreEl.classList.remove('pulse');
+          shareBtn.style.display = 'none';
         }
 
         // ============================================
@@ -1324,6 +1360,7 @@
           gameState = 'results';  // Go straight to results
           bird.width = 90;
           bird.height = 90;
+          if (inTelegram) shareBtn.style.display = 'block';
         }
 
         // ============================================
