@@ -154,6 +154,9 @@
         let pendingTrack = Promise.resolve();
         // Personal best — fetched once on load, refreshed from play_end responses.
         let playerHighScore = 0;
+        // TAP TO JUMP hint shown briefly at start of each run, hidden on first tap.
+        let playStartTime = 0;
+        let hasTappedThisRun = false;
 
         function trackTG(event, payload = {}) {
           if (!inTelegram) return Promise.resolve(null);
@@ -935,6 +938,28 @@
           drawBird();
           drawFloatTexts();
 
+          // TAP TO JUMP hint — only during the first 1.5s of a fresh run, before any input.
+          if (!hasTappedThisRun) {
+            const elapsed = performance.now() - playStartTime;
+            if (elapsed < 1500) {
+              const alpha = elapsed < 1200 ? 1 : Math.max(0, 1 - (elapsed - 1200) / 300);
+              ctx.save();
+              ctx.globalAlpha = alpha;
+              const hintSize = Math.min(cw * 0.08, 32);
+              ctx.font = `${hintSize}px Slackey`;
+              ctx.fillStyle = '#ffdd00';
+              ctx.strokeStyle = '#000';
+              ctx.lineWidth = 5;
+              ctx.textAlign = 'center';
+              // Pulse the text subtly so it draws the eye.
+              const pulse = 1 + Math.sin(elapsed / 100) * 0.04;
+              ctx.translate(cw / 2, ch * 0.35);
+              ctx.scale(pulse, pulse);
+              ctx.strokeText('TAP TO JUMP', 0, 0);
+              ctx.fillText('TAP TO JUMP', 0, 0);
+              ctx.restore();
+            }
+          }
         }
 
         function drawGameOver() {
@@ -1311,6 +1336,7 @@
 
           if (gameState !== 'playing') return;
 
+          hasTappedThisRun = true;
           bird.vy = lift;
           triggerHaptic();
 
@@ -1359,6 +1385,8 @@
             } else {
               clearInterval(countdownTimer);
               gameState = 'playing';
+              playStartTime = performance.now();
+              hasTappedThisRun = false;
               signalReady();
               lastTime = performance.now();
               requestAnimationFrame(gameLoop);
