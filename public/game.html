@@ -135,13 +135,11 @@
           if (inTelegram) {
             trackTG('play_end', { score: finalScore, play_id: currentPlayId });
             currentPlayId = null;
-            // No Farcade overlay in Telegram — emulate the play_again handler so
-            // tapping "Continue" on the results screen returns the player to splash.
+            // No Farcade overlay in Telegram — drop straight into a new run.
+            // resetGame() re-shows the bizarre bar; startCountdown() shows the score HUD.
             selectRandomBeast();
-            gameState = 'splash';
-            scoreEl.style.display = 'none';
-            bizarreBar.style.display = 'none';
             resetGame();
+            startCountdown();
             return;
           }
           try {
