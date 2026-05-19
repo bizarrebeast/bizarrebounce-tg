@@ -215,11 +215,11 @@
         shareBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           if (!inTelegram) return;
-          const params = new URLSearchParams({
-            url: 'https://t.me/BizarreBeastsBot/bbbounce?startapp=share',
-            text: 'I scored ' + score.toLocaleString() + ' in Bizarre Bounce. Beat me 👾',
-          });
-          try { TG.openTelegramLink('https://t.me/share/url?' + params.toString()); } catch (e) {}
+          // encodeURIComponent produces %20 for spaces; URLSearchParams would emit + which
+          // Telegram's share/url endpoint surfaces literally in the message text.
+          const u = encodeURIComponent('https://t.me/BizarreBeastsBot/bbbounce?startapp=share');
+          const t = encodeURIComponent('I scored ' + score.toLocaleString() + ' in Bizarre Bounce. Beat me 👾');
+          try { TG.openTelegramLink('https://t.me/share/url?url=' + u + '&text=' + t); } catch (e) {}
         });
 
         let cw, ch;
