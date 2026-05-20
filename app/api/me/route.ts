@@ -5,9 +5,9 @@ import { verifyInitData } from '@/lib/telegram';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Read-only stats for the current player. Used by the game to show "BEST: X" on splash.
+// Read-only stats for the current player in a given game. Used by games to show "BEST: X" on splash.
 export async function POST(req: NextRequest) {
-  let body: { initData?: string };
+  let body: { initData?: string; game?: string };
   try {
     body = await req.json();
   } catch {
@@ -22,17 +22,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'initdata_invalid' }, { status: 401 });
   }
 
-  const { data } = await supabase
-    .from('players')
-    .select('high_score, total_plays, username')
-    .eq('tg_user_id', parsed.user.id)
-    .maybeSingle();
+  const game = typeof body.game === 'string' && body.game.length > 0 ? body.game : 'bizarrebounce';
 
-  // First-time player → return zeros so the splash just hides the BEST line.
+  const [statsR, playerR] = await Promise.all([
+    supabase
+      .from('player_game_stats')
+      .select('high_score, total_plays, high_score_meta')
+      .eq('tg_user_id', parsed.user.id)
+      .eq('game', game)
+      .maybeSingle(),
+    supabase
+      .from('players')
+      .select('username')
+      .eq('tg_user_id', parsed.user.id)
+      .maybeSingle(),
+  ]);
+
   return NextResponse.json({
     ok: true,
-    high_score: data?.high_score ?? 0,
-    total_plays: data?.total_plays ?? 0,
-    username: data?.username ?? null,
+    high_score: statsR.data?.high_score ?? 0,
+    total_plays: statsR.data?.total_plays ?? 0,
+    high_score_meta: statsR.data?.high_score_meta ?? null,
+    username: playerR.data?.username ?? null,
   });
 }

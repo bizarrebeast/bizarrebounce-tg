@@ -142,7 +142,7 @@
           fetch('/api/me', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initData: TG.initData }),
+            body: JSON.stringify({ initData: TG.initData, game: GAME_ID }),
           })
             .then(r => r.ok ? r.json() : null)
             .then(d => { if (d?.high_score) playerHighScore = d.high_score; })
@@ -158,13 +158,15 @@
         let playStartTime = 0;
         let hasTappedThisRun = false;
 
+        const GAME_ID = 'bizarrebounce';
+
         function trackTG(event, payload = {}) {
           if (!inTelegram) return Promise.resolve(null);
           pendingTrack = pendingTrack.then(() =>
             fetch('/api/track', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ event, initData: TG.initData, ...payload }),
+              body: JSON.stringify({ event, game: GAME_ID, initData: TG.initData, ...payload }),
               keepalive: true, // survives tab close on play_end
             }).then(r => r.ok ? r.json() : null).catch(() => null)
           );
