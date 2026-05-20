@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "copy-game": "cp ../bizarre-bounce-v2/dist/index.html public/game.html"
+    "copy-game": "cp ../bizarre-bounce-v2/dist/index.html public/game.html",
+    "copy-tq": "cp ../bizarre-underground/dist/index.html public/treasurequest.html"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
