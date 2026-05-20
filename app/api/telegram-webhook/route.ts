@@ -12,7 +12,14 @@ if (!BOT_TOKEN || !WEBHOOK_SECRET) {
 const BOT_USERNAME = 'BizarreBeastsBot';
 const TG_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const PUBLIC_ORIGIN = 'https://bizarrebounce-tg.bizarrebeasts.io';
-const START_GIF_URL = `${PUBLIC_ORIGIN}/bizarrebounce-bizarrebeasts.gif`;
+
+// /start picks one of these at random — keeps the welcome fresh, surfaces each
+// game as you ship more. Drop a new GIF into public/ and add the URL here.
+const START_GIFS = [
+  `${PUBLIC_ORIGIN}/bizarrebounce-bizarrebeasts.gif`,
+  `${PUBLIC_ORIGIN}/treasurequest-bizarrebeasts-loop.gif`,
+];
+const pickStartGif = () => START_GIFS[Math.floor(Math.random() * START_GIFS.length)];
 
 // Games available under @BizarreBeastsBot. Add a new entry when you register
 // another Mini App with BotFather and want it in the /start menu.
@@ -79,7 +86,7 @@ export async function POST(req: NextRequest) {
   // flows into every game button's startapp param so we can track which channel sent them.
   if (text === '/start' || text.startsWith('/start ')) {
     const param = text.slice('/start'.length).trim() || undefined;
-    await sendAnimation(chatId, START_GIF_URL, WELCOME, gameMenu(param));
+    await sendAnimation(chatId, pickStartGif(), WELCOME, gameMenu(param));
   } else if (text === '/play' || text === '/help' || text === '/games') {
     await sendMessage(chatId, 'Pick a game 👇', gameMenu());
   } else {
