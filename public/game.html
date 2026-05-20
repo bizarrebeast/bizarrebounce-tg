@@ -132,6 +132,17 @@
         const TG = window.Telegram?.WebApp;
         const inTelegram = !!(TG && TG.initData);
 
+        const GAME_ID = 'bizarrebounce';
+
+        // Tracking is sequenced so play_end always lands after its play_start.
+        let currentPlayId = null;
+        let pendingTrack = Promise.resolve();
+        // Personal best — fetched once on load, refreshed from play_end responses.
+        let playerHighScore = 0;
+        // TAP TO JUMP hint shown briefly at start of each run, hidden on first tap.
+        let playStartTime = 0;
+        let hasTappedThisRun = false;
+
         if (inTelegram) {
           try {
             TG.ready();
@@ -148,17 +159,6 @@
             .then(d => { if (d?.high_score) playerHighScore = d.high_score; })
             .catch(() => {});
         }
-
-        // Tracking is sequenced so play_end always lands after its play_start.
-        let currentPlayId = null;
-        let pendingTrack = Promise.resolve();
-        // Personal best — fetched once on load, refreshed from play_end responses.
-        let playerHighScore = 0;
-        // TAP TO JUMP hint shown briefly at start of each run, hidden on first tap.
-        let playStartTime = 0;
-        let hasTappedThisRun = false;
-
-        const GAME_ID = 'bizarrebounce';
 
         function trackTG(event, payload = {}) {
           if (!inTelegram) return Promise.resolve(null);
