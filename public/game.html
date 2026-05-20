@@ -17,6 +17,14 @@
     <meta name="twitter:image" content="https://bizarrebounce-tg.bizarrebeasts.io/bizarrebounce-tg-splash-image-640x360.png">
     <script src="https://cdn.jsdelivr.net/npm/@farcade/game-sdk@latest/dist/index.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <script async="" src="https://www.googletagmanager.com/gtag/js?id=G-ELH2WGKGQX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-ELH2WGKGQX');
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Slackey&amp;display=swap" rel="stylesheet">
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -134,6 +142,13 @@
 
         const GAME_ID = 'bizarrebounce';
 
+        // GA4 custom event helper. host is 'telegram' | 'farcade' | 'web' so we can segment.
+        function gaEvent(event, params) {
+          if (typeof window.gtag !== 'function') return;
+          const host = inTelegram ? 'telegram' : (window.FarcadeSDK ? 'farcade' : 'web');
+          window.gtag('event', event, Object.assign({ game_name: GAME_ID, host }, params || {}));
+        }
+
         // Tracking is sequenced so play_end always lands after its play_start.
         let currentPlayId = null;
         let pendingTrack = Promise.resolve();
@@ -185,6 +200,7 @@
         }
 
         function reportGameOver(finalScore) {
+          gaEvent('play_end', { score: finalScore, value: finalScore });
           if (inTelegram) {
             trackTG('play_end', { score: finalScore, play_id: currentPlayId })
               .then(res => {
@@ -207,6 +223,7 @@
         }
 
         function signalReady() {
+          gaEvent('play_start');
           if (inTelegram) {
             // Each countdown→playing transition is a new play row.
             trackTG('play_start').then(res => {
@@ -232,6 +249,7 @@
 
         shareBtn.addEventListener('click', (e) => {
           e.stopPropagation();
+          gaEvent('share_score', { score: score, value: score });
           if (!inTelegram) return;
           // encodeURIComponent produces %20 for spaces; URLSearchParams would emit + which
           // Telegram's share/url endpoint surfaces literally in the message text.
