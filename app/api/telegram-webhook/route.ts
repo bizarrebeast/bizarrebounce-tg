@@ -12,7 +12,7 @@ if (!BOT_TOKEN || !WEBHOOK_SECRET) {
 const BOT_USERNAME = 'BizarreBeastsBot';
 const MINI_APP_SHORT = 'bbbounce';
 const TG_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
-const PUBLIC_ORIGIN = 'https://bizarrebounce-tg.vercel.app';
+const PUBLIC_ORIGIN = 'https://bizarrebounce-tg.bizarrebeasts.io';
 const START_GIF_URL = `${PUBLIC_ORIGIN}/bizarrebounce-bizarrebeasts.gif`;
 
 type InlineKeyboard = { inline_keyboard: { text: string; url: string }[][] };
