@@ -10,17 +10,26 @@ if (!BOT_TOKEN || !WEBHOOK_SECRET) {
 }
 
 const BOT_USERNAME = 'BizarreBeastsBot';
-const MINI_APP_SHORT = 'bbbounce';
 const TG_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const PUBLIC_ORIGIN = 'https://bizarrebounce-tg.bizarrebeasts.io';
 const START_GIF_URL = `${PUBLIC_ORIGIN}/bizarrebounce-bizarrebeasts.gif`;
 
+// Games available under @BizarreBeastsBot. Add a new entry when you register
+// another Mini App with BotFather and want it in the /start menu.
+const GAMES = [
+  { short: 'bbbounce', label: '🎮 Bizarre Bounce' },
+  { short: 'treasurequest', label: '⛏️ Treasure Quest' },
+];
+
 type InlineKeyboard = { inline_keyboard: { text: string; url: string }[][] };
 
-function playButton(startParam?: string): InlineKeyboard {
-  const base = `https://t.me/${BOT_USERNAME}/${MINI_APP_SHORT}`;
-  const url = startParam ? `${base}?startapp=${encodeURIComponent(startParam)}` : base;
-  return { inline_keyboard: [[{ text: '🎮 Play Bizarre Bounce', url }]] };
+function gameMenu(startParam?: string): InlineKeyboard {
+  const suffix = startParam ? `?startapp=${encodeURIComponent(startParam)}` : '';
+  return {
+    inline_keyboard: GAMES.map((g) => [
+      { text: g.label, url: `https://t.me/${BOT_USERNAME}/${g.short}${suffix}` },
+    ]),
+  };
 }
 
 async function sendMessage(chat_id: number, text: string, reply_markup?: InlineKeyboard) {
@@ -40,11 +49,12 @@ async function sendAnimation(chat_id: number, animationUrl: string, caption: str
 }
 
 const WELCOME = [
-  '🎮 <b>Welcome to Bizarre Bounce!</b>',
+  '🎮 <b>Welcome to BizarreBeasts!</b>',
   '',
-  'Tap to bounce. Avoid obstacles. Go BIZARRE!',
+  'Two games live on Telegram. Pick one 👇',
   '',
-  'Tap below to play 👇',
+  '• <b>Bizarre Bounce</b> — tap to fly, dodge pipes, go BIZARRE',
+  '• <b>Treasure Quest</b> — retro climber, dodge enemies, collect treasure',
 ].join('\n');
 
 export async function POST(req: NextRequest) {
@@ -65,14 +75,15 @@ export async function POST(req: NextRequest) {
   const text = typeof msg?.text === 'string' ? msg.text.trim() : '';
   if (!chatId || !text) return NextResponse.json({ ok: true });
 
-  // /start optionally carries an attribution payload: /start twitter_may19
+  // /start optionally carries an attribution payload: /start twitter_may19 — this
+  // flows into every game button's startapp param so we can track which channel sent them.
   if (text === '/start' || text.startsWith('/start ')) {
     const param = text.slice('/start'.length).trim() || undefined;
-    await sendAnimation(chatId, START_GIF_URL, WELCOME, playButton(param));
-  } else if (text === '/play' || text === '/help') {
-    await sendMessage(chatId, 'Tap below to play 👇', playButton());
+    await sendAnimation(chatId, START_GIF_URL, WELCOME, gameMenu(param));
+  } else if (text === '/play' || text === '/help' || text === '/games') {
+    await sendMessage(chatId, 'Pick a game 👇', gameMenu());
   } else {
-    await sendMessage(chatId, 'Try /start, or tap the button below to play.', playButton());
+    await sendMessage(chatId, 'Try /start, or pick a game below.', gameMenu());
   }
 
   return NextResponse.json({ ok: true });
