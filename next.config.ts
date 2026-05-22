@@ -24,10 +24,17 @@ const nextConfig: NextConfig = {
           has: [{ type: 'host', value: 'treasurequest-tg.bizarrebeasts.io' }],
           destination: '/treasurequest.html',
         },
+        // tictactoe-tg.bizarrebeasts.io → TicTacToe at root
+        {
+          source: '/',
+          has: [{ type: 'host', value: 'tictactoe-tg.bizarrebeasts.io' }],
+          destination: '/tictactoe.html',
+        },
         // Default root for any other host (bizarrebounce.*, vercel.app, etc.) → bbbounce
         { source: '/', destination: '/game.html' },
         // Path-based access still works on any domain
         { source: '/treasurequest', destination: '/treasurequest.html' },
+        { source: '/tictactoe', destination: '/tictactoe.html' },
       ],
       afterFiles: [],
       fallback: [],

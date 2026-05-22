@@ -1,0 +1,1256 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BizarreBeasts Tic Tac Toe</title>
+    <meta name="description" content="Play TicTacToe against BizarreBeasts! Pick a beast, claim the board, go BIZARRE.">
+    <meta property="og:title" content="BizarreBeasts TicTacToe">
+    <meta property="og:description" content="Play TicTacToe against BizarreBeasts!">
+    <meta property="og:image" content="https://tictactoe-tg.bizarrebeasts.io/tictactoe-tg-splash-image-640x360.png">
+    <meta property="og:image:width" content="640">
+    <meta property="og:image:height" content="360">
+    <meta property="og:url" content="https://tictactoe-tg.bizarrebeasts.io/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="BizarreBeasts">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="BizarreBeasts TicTacToe">
+    <meta name="twitter:description" content="Play TicTacToe against BizarreBeasts!">
+    <meta name="twitter:image" content="https://tictactoe-tg.bizarrebeasts.io/tictactoe-tg-splash-image-640x360.png">
+
+    
+    <script data-kids-strip="" src="https://cdn.jsdelivr.net/npm/@farcade/game-sdk@latest/dist/index.min.js"></script>
+    <script data-kids-strip="" src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script data-kids-strip="" async="" src="https://www.googletagmanager.com/gtag/js?id=G-ELH2WGKGQX"></script>
+    <script data-kids-strip="">
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-ELH2WGKGQX');
+    </script>
+
+    
+    <link href="https://fonts.googleapis.com/css2?family=Slackey&amp;display=swap" rel="stylesheet">
+
+    <style>
+      /* Base Styles */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html, body {
+        height: 100%;
+        font-family: 'Slackey', Arial, sans-serif;
+        overflow: hidden;
+        background: #1a1a2e;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Splash Screen */
+      #splash {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        padding: 30px 20px 80px;
+      }
+
+      #splash.hidden {
+        display: none;
+      }
+
+      /* Background canvas for splash */
+      #splashBgCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -1;
+      }
+
+      .splash-header {
+        text-align: center;
+      }
+
+      .splash-title {
+        font-family: 'Slackey', Arial, sans-serif;
+        font-size: 2.4em;
+        color: #ffff00;
+        text-align: center;
+        text-shadow:
+          -3px -3px 0 #000,
+          3px -3px 0 #000,
+          -3px 3px 0 #000,
+          3px 3px 0 #000,
+          0 4px 8px rgba(255, 136, 0, 0.6);
+        line-height: 1.1;
+        margin-bottom: 8px;
+      }
+
+      .splash-subtitle {
+        font-family: 'Slackey', Arial, sans-serif;
+        font-size: 0.95em;
+        color: #fff;
+        text-shadow:
+          -2px -2px 0 #000,
+          2px -2px 0 #000,
+          -2px 2px 0 #000,
+          2px 2px 0 #000;
+        line-height: 1.3;
+      }
+
+      .demo-board-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 20px 0;
+      }
+
+      #demoCanvas {
+        width: 100%;
+        max-width: 260px;
+        height: auto;
+        aspect-ratio: 1 / 1;
+        border: 6px solid #ffcc00;
+        border-radius: 8px;
+        box-shadow: 0 0 0 3px #000, 0 4px 12px rgba(0,0,0,0.4);
+      }
+
+      .play-button {
+        font-family: 'Slackey', Arial, sans-serif;
+        font-size: 18px;
+        color: #fff;
+        background: linear-gradient(180deg, #ff69b4 0%, #ff1493 100%);
+        border: 3px solid #000;
+        border-radius: 12px;
+        padding: 14px 50px;
+        cursor: pointer;
+        text-shadow: 1px 1px 2px #000;
+        box-shadow: 0 4px 0 #aa0066, 0 6px 10px rgba(0,0,0,0.3);
+        transition: all 0.1s;
+      }
+
+      .play-button:hover {
+        background: linear-gradient(180deg, #ff85c1 0%, #ff69b4 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 0 #aa0066, 0 8px 12px rgba(0,0,0,0.3);
+      }
+
+      .play-button:active {
+        transform: translateY(2px);
+        box-shadow: 0 2px 0 #aa0066, 0 3px 6px rgba(0,0,0,0.3);
+      }
+
+      /* Game Container */
+      #game-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding-top: 0.5rem;
+        z-index: 1;
+      }
+
+      #game-container.visible {
+        display: flex;
+      }
+
+      /* Background canvas for game */
+      #gameBgCanvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        display: none;
+      }
+
+      #gameBgCanvas.visible {
+        display: block;
+      }
+
+      /* Score Display */
+      #scoreDisplay {
+        margin: 8px auto;
+        text-align: center;
+        width: auto;
+        max-width: 90%;
+        font-family: 'Slackey', Arial, sans-serif;
+        font-size: 0.95em;
+        color: #fff;
+        text-shadow: 1px 1px 3px #000;
+        background: rgba(0,0,0,0.5);
+        padding: 10px 20px;
+        border-radius: 20px;
+        border: 2px solid #000;
+        position: relative;
+        z-index: 10;
+      }
+
+      /* Canvas Container */
+      #canvas-wrapper {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        width: 100%;
+        padding-top: 10px;
+        z-index: 5;
+      }
+
+      #gameCanvas {
+        width: 100%;
+        max-width: 400px;
+        aspect-ratio: 1 / 1;
+        border: 6px solid #ffcc00;
+        border-radius: 8px;
+        box-shadow: 0 0 0 3px #000, 0 4px 16px rgba(0,0,0,0.4);
+        touch-action: none;
+        position: relative;
+        z-index: 5;
+      }
+
+      /* Popup */
+      #popup {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 200;
+      }
+
+      #popup.visible {
+        display: flex;
+      }
+
+      #popup-content {
+        background: linear-gradient(180deg, #228b22 0%, #006400 100%);
+        border: 4px solid #000;
+        border-radius: 16px;
+        padding: 30px 50px;
+        text-align: center;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      }
+
+      #popup-text {
+        font-family: 'Slackey', Arial, sans-serif;
+        font-size: 1.8em;
+        color: #ffff00;
+        text-shadow:
+          -2px -2px 0 #000,
+          2px -2px 0 #000,
+          -2px 2px 0 #000,
+          2px 2px 0 #000;
+        margin-bottom: 15px;
+      }
+
+      #popup-continue {
+        font-family: 'Slackey', Arial, sans-serif;
+        font-size: 1em;
+        color: #fff;
+        text-shadow: 1px 1px 2px #000;
+      }
+    </style>
+  </head>
+  <body>
+    
+    <div id="splash">
+      <canvas id="splashBgCanvas"></canvas>
+      <div class="splash-header">
+        <div class="splash-title">BizarreBeasts<br>Tic Tac Toe</div>
+        <p class="splash-subtitle">Battle the BIZARRE AI!<br>Play until you lose!</p>
+      </div>
+      <div class="demo-board-container">
+        <canvas id="demoCanvas" width="260" height="260"></canvas>
+      </div>
+      <button class="play-button">Play</button>
+    </div>
+
+    
+    <canvas id="gameBgCanvas"></canvas>
+
+    
+    <div id="game-container">
+      <div id="scoreDisplay">Score: 0</div>
+      <div id="canvas-wrapper">
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+      </div>
+    </div>
+
+    
+    <div id="popup">
+      <div id="popup-content">
+        <div id="popup-text"></div>
+        <div id="popup-continue">Tap to continue</div>
+      </div>
+    </div>
+
+    
+    
+
+    
+    <script>
+      if (window === window.top && document.getElementById('remix-root')) {
+        console.log('Builder Studio loading...');
+      } else {
+        // ============================================
+        // BEAST DATA
+        // ============================================
+        const BEASTS = [
+          { name: 'Bart Purple', url: 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20purple%20idle-Y1dxdFKg6Xjg4noNpekWHwFlABAdO5.png?zURb' },
+          { name: 'Bart Orange', url: 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20orange%20idle-x0qkShiBY2keBe82IwmGjcxOgKzzlY.png?Y0Cr' },
+          { name: 'Bart Teal', url: 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20teal%20idle-7bcWwblKrVXKLptXHADB7djUXK9eGq.png?KiKn' },
+          { name: 'Bart Pink', url: 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Bart%20pink%20idle-sYP48bXYmBTCVG1jUKhLjWsXHLuPKu.png?bMU3' },
+          { name: 'Louie Yellow', url: 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20yellow%20idle-eRJf6q1Q6un9xCbhifIdgHSA9xF2Nc.png?lgdG' },
+          { name: 'Louie Blue', url: 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20blue%20idle-a6b7mcZRSljaVcD0kHZ6aL3QMUFGsi.png?2xRT' },
+          { name: 'Louie Green', url: 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20green%20idle-hNipDzOrR0iQ4VBR0RcHQYiYF2blgD.png?jaGV' },
+          { name: 'Louie Pink', url: 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/6b07d2de-8a84-4da4-af76-b3c9b3a626a8/Louie%20pink%20idle-wBJyj9ImxviWh5hWsbO61FJQ0mYNN4.png?Vu5By' }
+        ];
+
+        // ============================================
+        // SPLASH BACKGROUND RENDERING (Sunset gradient like Checkerz)
+        // ============================================
+        const splashBgCanvas = document.getElementById('splashBgCanvas');
+        const splashBgCtx = splashBgCanvas ? splashBgCanvas.getContext('2d') : null;
+
+        function resizeSplashBackground() {
+          if (!splashBgCanvas) return;
+          splashBgCanvas.width = window.innerWidth;
+          splashBgCanvas.height = window.innerHeight;
+          drawSplashBackground();
+        }
+
+        function drawSplashBackground() {
+          if (!splashBgCtx) return;
+          const w = splashBgCanvas.width;
+          const h = splashBgCanvas.height;
+
+          // Sunset gradient sky
+          drawSunsetGradient(splashBgCtx, w, h);
+
+          // Pink clouds
+          drawClouds(splashBgCtx, w, h);
+
+          // Colorful city buildings
+          drawCity(splashBgCtx, w, h);
+
+          // Green grass ground
+          drawGrass(splashBgCtx, w, h);
+        }
+
+        function drawSunsetGradient(ctx, w, h) {
+          const steps = 100;
+          for (let i = 0; i < steps; i++) {
+            const t = i / steps;
+            const y = t * h;
+            let r, g, b;
+
+            if (t < 0.4) {
+              const lt = t / 0.4;
+              r = 255;
+              g = Math.floor(20 + lt * 49);
+              b = Math.floor(147 - lt * 97);
+            } else if (t < 0.6) {
+              const lt = (t - 0.4) / 0.2;
+              r = 255;
+              g = Math.floor(69 + lt * 71);
+              b = Math.floor(50 - lt * 50);
+            } else if (t < 0.8) {
+              const lt = (t - 0.6) / 0.2;
+              r = 255;
+              g = Math.floor(140 + lt * 40);
+              b = 0;
+            } else {
+              const lt = (t - 0.8) / 0.2;
+              r = 255;
+              g = Math.floor(180 + lt * 24);
+              b = 0;
+            }
+
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(0, y, w, h / steps + 1);
+          }
+        }
+
+        function drawClouds(ctx, w, h) {
+          const cloudY = h * 0.08;
+          const clouds = [
+            { x: w * 0.1, y: cloudY, width: w * 0.12 },
+            { x: w * 0.35, y: cloudY * 0.8, width: w * 0.15 },
+            { x: w * 0.6, y: cloudY * 1.2, width: w * 0.1 },
+            { x: w * 0.85, y: cloudY * 0.9, width: w * 0.13 }
+          ];
+
+          clouds.forEach(cloud => {
+            drawCloud(ctx, cloud.x, cloud.y, cloud.width);
+          });
+        }
+
+        function drawCloud(ctx, cx, cy, width) {
+          const height = width * 0.25;
+          const outlineWidth = 3;
+          const numBumps = Math.max(2, Math.floor(width / 30));
+          const bumpSpacing = width / (numBumps + 1);
+          const bumps = [];
+
+          for (let i = 1; i <= numBumps; i++) {
+            bumps.push({
+              x: cx + i * bumpSpacing,
+              y: cy,
+              r: height * 0.5 + (i % 2) * height * 0.15
+            });
+          }
+
+          // Black outline
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.roundRect(cx - outlineWidth, cy - outlineWidth, width + outlineWidth * 2, height + outlineWidth * 2, height / 2);
+          ctx.fill();
+          bumps.forEach(b => {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y - height * 0.2, b.r + outlineWidth, 0, Math.PI * 2);
+            ctx.fill();
+          });
+
+          // Pink fill
+          ctx.fillStyle = '#ff69b4';
+          ctx.beginPath();
+          ctx.roundRect(cx, cy, width, height, height / 2);
+          ctx.fill();
+          bumps.forEach(b => {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y - height * 0.2, b.r, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+
+        function drawCity(ctx, w, h) {
+          const groundY = h * 0.78;
+          const buildingColors = ['#20b2aa', '#ff69b4', '#9370db', '#ff8c00', '#ffd700'];
+          const scale = Math.min(w, h) / 800;
+
+          let x = -20 * scale;
+          while (x < w + 50 * scale) {
+            const bw = (40 + Math.random() * 60) * scale;
+            const bh = (150 + Math.random() * 200) * scale;
+            const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
+
+            // Building body
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.roundRect(x, groundY - bh, bw, bh + 100 * scale, 6 * scale);
+            ctx.fill();
+
+            // Black outline
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3 * scale;
+            ctx.stroke();
+
+            // Windows
+            if (bw >= 40 * scale) {
+              const windowSize = 8 * scale;
+              const windowGapX = 16 * scale;
+              const windowGapY = 20 * scale;
+              ctx.fillStyle = '#2f2f4f';
+              ctx.globalAlpha = 0.7;
+
+              for (let wy = groundY - bh + 15 * scale; wy + windowSize < groundY - 20 * scale; wy += windowGapY) {
+                for (let wx = x + 10 * scale; wx + windowSize < x + bw - 10 * scale; wx += windowGapX) {
+                  if (Math.random() > 0.3) {
+                    ctx.beginPath();
+                    ctx.roundRect(wx, wy, windowSize, windowSize, 2 * scale);
+                    ctx.fill();
+                  }
+                }
+              }
+              ctx.globalAlpha = 1;
+            }
+
+            x += bw + (10 + Math.random() * 20) * scale;
+          }
+        }
+
+        function drawGrass(ctx, w, h) {
+          const groundY = h * 0.78;
+
+          // Main grass area
+          ctx.fillStyle = '#228b22';
+          ctx.fillRect(0, groundY, w, h - groundY);
+
+          // Grass texture
+          ctx.strokeStyle = '#1a6b1a';
+          ctx.lineWidth = 2;
+          for (let i = 0; i < 40; i++) {
+            const gx = Math.random() * w;
+            const gy = groundY + Math.random() * (h - groundY);
+            ctx.beginPath();
+            ctx.moveTo(gx, gy);
+            ctx.lineTo(gx + (Math.random() - 0.5) * 8, gy - 4 - Math.random() * 8);
+            ctx.stroke();
+          }
+        }
+
+        window.addEventListener('resize', resizeSplashBackground);
+        resizeSplashBackground();
+
+        // ============================================
+        // GAME BACKGROUND RENDERING
+        // ============================================
+        const gameBgCanvas = document.getElementById('gameBgCanvas');
+        const gameBgCtx = gameBgCanvas ? gameBgCanvas.getContext('2d') : null;
+
+        function resizeGameBackground() {
+          if (!gameBgCanvas) return;
+          gameBgCanvas.width = window.innerWidth;
+          gameBgCanvas.height = window.innerHeight;
+          drawGameBackground();
+        }
+
+        function drawGameBackground() {
+          if (!gameBgCtx) return;
+          const w = gameBgCanvas.width;
+          const h = gameBgCanvas.height;
+
+          // Reuse the same functions as splash
+          drawSunsetGradient(gameBgCtx, w, h);
+          drawClouds(gameBgCtx, w, h);
+          drawCity(gameBgCtx, w, h);
+          drawGrass(gameBgCtx, w, h);
+        }
+
+        window.addEventListener('resize', resizeGameBackground);
+
+        // ============================================
+        // DEMO GAME STATE (AI vs AI on splash screen)
+        // ============================================
+        let demoBoard = Array(9).fill(null);
+        let demoBeast1Img = null;
+        let demoBeast2Img = null;
+        let demoTurn = true; // true = beast1, false = beast2
+        let demoInterval = null;
+        let demoActive = false;
+        const demoCanvas = document.getElementById('demoCanvas');
+        const demoCtx = demoCanvas ? demoCanvas.getContext('2d') : null;
+
+        const DEMO_WIN_PATTERNS = [
+          [0, 1, 2], [3, 4, 5], [6, 7, 8],
+          [0, 3, 6], [1, 4, 7], [2, 5, 8],
+          [0, 4, 8], [2, 4, 6]
+        ];
+
+        function demoCheckWin(mark) {
+          return DEMO_WIN_PATTERNS.some(pattern =>
+            pattern.every(i => demoBoard[i] === mark)
+          );
+        }
+
+        function demoCheckDraw() {
+          return demoBoard.every(cell => cell !== null);
+        }
+
+        function demoDrawBoard() {
+          if (!demoCtx) return;
+          const size = demoCanvas.width;
+          const cellSize = size / 3;
+
+          demoCtx.clearRect(0, 0, size, size);
+
+          // Draw checkerboard squares (teal and purple like Checkerz)
+          for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+              demoCtx.fillStyle = (row + col) % 2 === 0 ? '#20b2aa' : '#9370db';
+              demoCtx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+            }
+          }
+
+          // Draw grid lines
+          demoCtx.strokeStyle = '#000';
+          demoCtx.lineWidth = 3;
+
+          // Vertical lines
+          demoCtx.beginPath();
+          demoCtx.moveTo(cellSize, 0);
+          demoCtx.lineTo(cellSize, size);
+          demoCtx.stroke();
+
+          demoCtx.beginPath();
+          demoCtx.moveTo(cellSize * 2, 0);
+          demoCtx.lineTo(cellSize * 2, size);
+          demoCtx.stroke();
+
+          // Horizontal lines
+          demoCtx.beginPath();
+          demoCtx.moveTo(0, cellSize);
+          demoCtx.lineTo(size, cellSize);
+          demoCtx.stroke();
+
+          demoCtx.beginPath();
+          demoCtx.moveTo(0, cellSize * 2);
+          demoCtx.lineTo(size, cellSize * 2);
+          demoCtx.stroke();
+        }
+
+        function demoDrawPieces() {
+          if (!demoCtx) return;
+          const size = demoCanvas.width;
+          const cellSize = size / 3;
+          const padding = cellSize * 0.1;
+          const pieceSize = cellSize - padding * 2;
+
+          for (let i = 0; i < 9; i++) {
+            if (demoBoard[i]) {
+              const row = Math.floor(i / 3);
+              const col = i % 3;
+              const x = col * cellSize + padding;
+              const y = row * cellSize + padding;
+              const img = demoBoard[i] === 'beast1' ? demoBeast1Img : demoBeast2Img;
+
+              if (img) {
+                demoCtx.drawImage(img, x, y, pieceSize, pieceSize);
+              }
+            }
+          }
+        }
+
+        function demoRender() {
+          demoDrawBoard();
+          demoDrawPieces();
+        }
+
+        function demoFindWinningMove(mark) {
+          for (let i = 0; i < 9; i++) {
+            if (demoBoard[i] === null) {
+              demoBoard[i] = mark;
+              const wins = demoCheckWin(mark);
+              demoBoard[i] = null;
+              if (wins) return i;
+            }
+          }
+          return -1;
+        }
+
+        function demoMakeMove() {
+          if (!demoActive) return;
+
+          const currentMark = demoTurn ? 'beast1' : 'beast2';
+          const opponentMark = demoTurn ? 'beast2' : 'beast1';
+          const emptyCells = demoBoard.map((v, i) => v === null ? i : -1).filter(i => i !== -1);
+
+          if (emptyCells.length === 0) return;
+
+          let move = -1;
+
+          // Try to win
+          move = demoFindWinningMove(currentMark);
+          if (move === -1) {
+            // Try to block
+            move = demoFindWinningMove(opponentMark);
+          }
+          if (move === -1) {
+            // Take center if available
+            if (demoBoard[4] === null) {
+              move = 4;
+            } else {
+              // Take a random corner or edge
+              const corners = [0, 2, 6, 8].filter(i => demoBoard[i] === null);
+              if (corners.length > 0) {
+                move = corners[Math.floor(Math.random() * corners.length)];
+              } else {
+                move = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+              }
+            }
+          }
+
+          demoBoard[move] = currentMark;
+          demoRender();
+
+          // Check for game end
+          if (demoCheckWin(currentMark) || demoCheckDraw()) {
+            // Pause then reset
+            setTimeout(() => {
+              if (demoActive) {
+                demoResetGame();
+              }
+            }, 2000);
+            return;
+          }
+
+          demoTurn = !demoTurn;
+        }
+
+        async function demoResetGame() {
+          demoBoard = Array(9).fill(null);
+          demoTurn = true;
+
+          // Fixed beasts: Yellow Louie vs Orange Bart
+          const yellowLouie = BEASTS.find(b => b.name === 'Louie Yellow');
+          const orangeBart = BEASTS.find(b => b.name === 'Bart Orange');
+          try {
+            demoBeast1Img = await loadDemoImage(yellowLouie.url);
+            demoBeast2Img = await loadDemoImage(orangeBart.url);
+          } catch (e) {
+            console.error('Failed to load demo beast images:', e);
+          }
+
+          demoRender();
+        }
+
+        function loadDemoImage(url) {
+          return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = url;
+          });
+        }
+
+        async function startDemo() {
+          if (demoActive) return;
+          demoActive = true;
+
+          await demoResetGame();
+
+          // Make moves every 1.2 seconds
+          demoInterval = setInterval(() => {
+            if (demoActive && !demoCheckWin('beast1') && !demoCheckWin('beast2') && !demoCheckDraw()) {
+              demoMakeMove();
+            }
+          }, 1200);
+        }
+
+        function stopDemo() {
+          demoActive = false;
+          if (demoInterval) {
+            clearInterval(demoInterval);
+            demoInterval = null;
+          }
+        }
+
+        // Start demo on page load
+        if (demoCanvas) {
+          startDemo();
+        }
+
+        // ============================================
+        // GAME STATE
+        // ============================================
+        let playerImg = null;
+        let aiImg = null;
+        let playerTurn = true;
+        let board = Array(9).fill(null);
+        let score = 0;
+        let gameActive = false;
+
+        // DOM Elements
+        const splash = document.getElementById('splash');
+        const gameContainer = document.getElementById('game-container');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const popup = document.getElementById('popup');
+        const popupText = document.getElementById('popup-text');
+
+        // ============================================
+        // CANVAS SIZING
+        // ============================================
+        function resizeCanvas() {
+          const maxSize = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.6, 400);
+          canvas.width = maxSize;
+          canvas.height = maxSize;
+          if (gameActive) {
+            resizeGameBackground();
+            render();
+          }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ============================================
+        // IMAGE LOADING
+        // ============================================
+        function loadImage(url) {
+          return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = url;
+          });
+        }
+
+        // ============================================
+        // RANDOM BEAST SELECTION
+        // ============================================
+        function selectRandomBeasts() {
+          // Fixed beasts: Player = Yellow Louie, AI = Orange Bart
+          return {
+            player: BEASTS.find(b => b.name === 'Louie Yellow'),
+            ai: BEASTS.find(b => b.name === 'Bart Orange')
+          };
+        }
+
+        // ============================================
+        // SDK HELPERS — multi-host (Farcade + Telegram)
+        // ============================================
+        // Host detection runs once. initData is only non-empty inside the Telegram client.
+        const TG = window.Telegram?.WebApp;
+        const inTelegram = !!(TG && TG.initData);
+
+        const GAME_ID = 'tictactoe';
+
+        // GA4 custom event helper. host is 'telegram' | 'farcade' | 'web' so we can segment.
+        function gaEvent(event, params) {
+          if (typeof window.gtag !== 'function') return;
+          const host = inTelegram ? 'telegram' : (window.FarcadeSDK ? 'farcade' : 'web');
+          window.gtag('event', event, Object.assign({ game_name: GAME_ID, host }, params || {}));
+        }
+
+        // Tracking is sequenced so play_end always lands after its play_start.
+        let currentPlayId = null;
+        let pendingTrack = Promise.resolve();
+        let playerHighScore = 0;
+
+        if (inTelegram) {
+          try {
+            TG.ready();
+            TG.expand();
+            TG.disableVerticalSwipes?.();
+          } catch (e) {}
+          fetch('/api/me', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initData: TG.initData, game: GAME_ID }),
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.high_score) playerHighScore = d.high_score; })
+            .catch(() => {});
+        }
+
+        function trackTG(event, payload = {}) {
+          if (!inTelegram) return Promise.resolve(null);
+          pendingTrack = pendingTrack.then(() =>
+            fetch('/api/track', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ event, game: GAME_ID, initData: TG.initData, ...payload }),
+              keepalive: true,
+            }).then(r => r.ok ? r.json() : null).catch(() => null)
+          );
+          return pendingTrack;
+        }
+
+        function triggerHaptic() {
+          if (inTelegram) {
+            try { TG.HapticFeedback?.impactOccurred?.('light'); } catch (e) {}
+            return;
+          }
+          try {
+            (window.FarcadeSDK?.hapticFeedback ||
+             window.FarcadeSDK?.singlePlayer?.actions?.hapticFeedback)?.();
+          } catch (e) {}
+        }
+
+        function signalReady() {
+          gaEvent('play_start');
+          if (inTelegram) {
+            trackTG('play_start').then(res => {
+              if (res?.play_id) currentPlayId = res.play_id;
+            });
+            return;
+          }
+          try {
+            (window.FarcadeSDK?.ready ||
+             window.FarcadeSDK?.singlePlayer?.actions?.ready)?.();
+            console.log("Ready signal sent");
+          } catch (e) {}
+        }
+
+        function reportGameOver(finalScore) {
+          gaEvent('play_end', { score: finalScore, value: finalScore });
+          if (inTelegram) {
+            trackTG('play_end', { score: finalScore, play_id: currentPlayId })
+              .then(res => {
+                if (res?.high_score != null && res.high_score > playerHighScore) {
+                  playerHighScore = res.high_score;
+                }
+              });
+            currentPlayId = null;
+            // No Farcade overlay in Telegram — restart immediately and fire play_start
+            // for the next run once fullReset's async image load resolves.
+            fullReset().then(signalReady);
+            return;
+          }
+          try {
+            (window.FarcadeSDK?.gameOver ||
+             window.FarcadeSDK?.singlePlayer?.actions?.gameOver)?.({ score: finalScore });
+            console.log("Game over reported with score:", finalScore);
+          } catch (e) {
+            console.error("Error reporting game over:", e);
+          }
+        }
+
+        // ============================================
+        // GAME START
+        // ============================================
+        async function startGame() {
+          // Random beast selection
+          const selection = selectRandomBeasts();
+
+          try {
+            playerImg = await loadImage(selection.player.url);
+            aiImg = await loadImage(selection.ai.url);
+          } catch (e) {
+            console.error('Failed to load beast images:', e);
+            return;
+          }
+
+          // Reset game state
+          board = Array(9).fill(null);
+          playerTurn = true;
+          gameActive = true;
+
+          // Show game screen
+          splash.classList.add('hidden');
+          gameContainer.classList.add('visible');
+          gameBgCanvas.classList.add('visible');
+
+          // Initialize game background
+          resizeGameBackground();
+
+          // Signal ready to SDK
+          signalReady();
+
+          // Initial render
+          render();
+        }
+
+        // ============================================
+        // DRAWING
+        // ============================================
+        function drawBoard() {
+          const size = canvas.width;
+          const cellSize = size / 3;
+
+          ctx.clearRect(0, 0, size, size);
+
+          // Draw checkerboard squares (teal and purple like Checkerz)
+          for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+              ctx.fillStyle = (row + col) % 2 === 0 ? '#20b2aa' : '#9370db';
+              ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+            }
+          }
+
+          // Draw grid lines
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 3;
+
+          // Vertical lines
+          ctx.beginPath();
+          ctx.moveTo(cellSize, 0);
+          ctx.lineTo(cellSize, size);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(cellSize * 2, 0);
+          ctx.lineTo(cellSize * 2, size);
+          ctx.stroke();
+
+          // Horizontal lines
+          ctx.beginPath();
+          ctx.moveTo(0, cellSize);
+          ctx.lineTo(size, cellSize);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(0, cellSize * 2);
+          ctx.lineTo(size, cellSize * 2);
+          ctx.stroke();
+        }
+
+        function drawPieces() {
+          const size = canvas.width;
+          const cellSize = size / 3;
+          const padding = cellSize * 0.1;
+          const pieceSize = cellSize - padding * 2;
+
+          for (let i = 0; i < 9; i++) {
+            if (board[i]) {
+              const row = Math.floor(i / 3);
+              const col = i % 3;
+              const x = col * cellSize + padding;
+              const y = row * cellSize + padding;
+              const img = board[i] === 'player' ? playerImg : aiImg;
+
+              if (img) {
+                ctx.drawImage(img, x, y, pieceSize, pieceSize);
+              }
+            }
+          }
+        }
+
+        function render() {
+          drawBoard();
+          drawPieces();
+          scoreDisplay.textContent = `Score: ${score}`;
+        }
+
+        // ============================================
+        // WIN DETECTION
+        // ============================================
+        const WIN_PATTERNS = [
+          [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+          [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+          [0, 4, 8], [2, 4, 6]             // Diagonals
+        ];
+
+        function checkWin(mark) {
+          return WIN_PATTERNS.some(pattern =>
+            pattern.every(i => board[i] === mark)
+          );
+        }
+
+        function checkDraw() {
+          return board.every(cell => cell !== null);
+        }
+
+        // ============================================
+        // AI LOGIC
+        // ============================================
+        function getAIDifficultyLevel() {
+          return Math.floor(score / 5000);
+        }
+
+        function findWinningMove(mark) {
+          for (let i = 0; i < 9; i++) {
+            if (board[i] === null) {
+              board[i] = mark;
+              const wins = checkWin(mark);
+              board[i] = null;
+              if (wins) return i;
+            }
+          }
+          return -1;
+        }
+
+        function aiMove() {
+          if (!gameActive || playerTurn) return;
+
+          const level = getAIDifficultyLevel();
+          const emptyCells = board.map((v, i) => v === null ? i : -1).filter(i => i !== -1);
+
+          if (emptyCells.length === 0) return;
+
+          let move = -1;
+
+          // Try to win
+          move = findWinningMove('ai');
+          if (move !== -1) {
+            makeMove(move, 'ai');
+            return;
+          }
+
+          // Try to block player
+          move = findWinningMove('player');
+          if (move !== -1) {
+            makeMove(move, 'ai');
+            return;
+          }
+
+          // Higher difficulty: prioritize center and corners
+          if (level >= 2) {
+            // Take center if available
+            if (board[4] === null) {
+              makeMove(4, 'ai');
+              return;
+            }
+
+            // Take corners
+            const corners = [0, 2, 6, 8].filter(i => board[i] === null);
+            if (corners.length > 0) {
+              move = corners[Math.floor(Math.random() * corners.length)];
+              makeMove(move, 'ai');
+              return;
+            }
+          }
+
+          // Random move
+          move = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+          makeMove(move, 'ai');
+        }
+
+        function makeMove(index, mark) {
+          board[index] = mark;
+          triggerHaptic();
+          render();
+
+          if (checkWin(mark)) {
+            gameActive = false;
+            if (mark === 'player') {
+              score += 1000;
+              render();
+              showPopup('You Win!', () => resetBoard());
+            } else {
+              showPopup('You Lose!', () => endGame());
+            }
+            return;
+          }
+
+          if (checkDraw()) {
+            gameActive = false;
+            showPopup('Draw!', () => resetBoard());
+            return;
+          }
+
+          playerTurn = mark !== 'player';
+
+          if (!playerTurn) {
+            setTimeout(aiMove, 500);
+          }
+        }
+
+        // ============================================
+        // POPUP
+        // ============================================
+        function showPopup(text, callback) {
+          popupText.textContent = text;
+          popup.classList.add('visible');
+
+          const handleClick = () => {
+            popup.classList.remove('visible');
+            popup.removeEventListener('click', handleClick);
+            if (callback) callback();
+          };
+
+          setTimeout(() => {
+            popup.addEventListener('click', handleClick);
+          }, 300);
+        }
+
+        // ============================================
+        // GAME CONTROL
+        // ============================================
+        function resetBoard() {
+          board = Array(9).fill(null);
+          playerTurn = true;
+          gameActive = true;
+          render();
+        }
+
+        function endGame() {
+          gameActive = false;
+          reportGameOver(score);
+        }
+
+        async function fullReset() {
+          score = 0;
+          // Select new random beasts
+          const selection = selectRandomBeasts();
+          try {
+            playerImg = await loadImage(selection.player.url);
+            aiImg = await loadImage(selection.ai.url);
+          } catch (e) {
+            console.error('Failed to load beast images:', e);
+          }
+          resetBoard();
+        }
+
+        // ============================================
+        // INPUT HANDLING
+        // ============================================
+        function handleTap(e) {
+          if (!gameActive || !playerTurn) return;
+
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+
+          let x, y;
+          if (e.touches) {
+            x = (e.touches[0].clientX - rect.left) * scaleX;
+            y = (e.touches[0].clientY - rect.top) * scaleY;
+          } else {
+            x = (e.clientX - rect.left) * scaleX;
+            y = (e.clientY - rect.top) * scaleY;
+          }
+
+          const cellSize = canvas.width / 3;
+          const col = Math.floor(x / cellSize);
+          const row = Math.floor(y / cellSize);
+          const index = row * 3 + col;
+
+          if (index >= 0 && index < 9 && board[index] === null) {
+            makeMove(index, 'player');
+          }
+        }
+
+        canvas.addEventListener('click', handleTap);
+        canvas.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          handleTap(e);
+        }, { passive: false });
+
+        // Play button click (stops demo and starts game)
+        const playButton = document.querySelector('.play-button');
+        if (playButton) {
+          playButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            stopDemo();
+            startGame();
+          });
+          playButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            stopDemo();
+            startGame();
+          }, { passive: false });
+        }
+
+        // ============================================
+        // SDK EVENT HANDLERS
+        // ============================================
+        if (window.FarcadeSDK) {
+          console.log("Farcade SDK loaded");
+
+          window.FarcadeSDK.on?.("play_again", () => {
+            console.log("Play again requested");
+            fullReset();
+          });
+        }
+
+        console.log("BizarreBeasts Tic-Tac-Toe loaded!");
+      }
+    </script>
+  
+
+<script>"use strict";var Game=(()=>{var a=Object.defineProperty;var t=Object.getOwnPropertyDescriptor;var m=Object.getOwnPropertyNames;var c=Object.prototype.hasOwnProperty;var d=(e,i)=>{for(var n in i)a(e,n,{get:i[n],enumerable:!0})},u=(e,i,n,l)=>{if(i&&typeof i=="object"||typeof i=="function")for(let o of m(i))!c.call(e,o)&&o!==n&&a(e,o,{get:()=>i[o],enumerable:!(l=t(i,o))||l.enumerable});return e};var G=e=>u(a({},"__esModule",{value:!0}),e);var g={};d(g,{initGame:()=>f});function f(){}return G(g);})();
+</script></body></html>

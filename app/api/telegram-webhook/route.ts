@@ -26,6 +26,7 @@ const pickStartGif = () => START_GIFS[Math.floor(Math.random() * START_GIFS.leng
 const GAMES = [
   { short: 'bbbounce', label: '🎮 Bizarre Bounce' },
   { short: 'treasurequest', label: '⛏️ Treasure Quest' },
+  { short: 'tictactoe', label: '⭕ TicTacToe' },
 ];
 
 type InlineKeyboard = { inline_keyboard: { text: string; url: string }[][] };
@@ -58,10 +59,11 @@ async function sendAnimation(chat_id: number, animationUrl: string, caption: str
 const WELCOME = [
   '🎮 <b>Welcome to BizarreBeasts!</b>',
   '',
-  'Two games live on Telegram. Pick one 👇',
+  'Three games live on Telegram. Pick one 👇',
   '',
   '• <b>Bizarre Bounce</b> — tap to fly, dodge pipes, go BIZARRE',
   '• <b>Treasure Quest</b> — retro climber, dodge enemies, collect treasure',
+  '• <b>TicTacToe</b> — claim the board against BizarreBeasts',
 ].join('\n');
 
 export async function POST(req: NextRequest) {
