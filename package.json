@@ -8,7 +8,8 @@
     "start": "next start",
     "copy-game": "cp ../bizarre-bounce-v2/dist/index.html public/game.html",
     "copy-tq": "cp ../bizarre-underground/dist/index.html public/treasurequest.html",
-    "copy-tictactoe": "cp ../bizarrebeasts-tictactoe-v2/dist/index.html public/tictactoe.html"
+    "copy-tictactoe": "cp ../bizarrebeasts-tictactoe-v2/dist/index.html public/tictactoe.html",
+    "copy-memorygame": "rm -rf public/memorygame && mkdir -p public/memorygame/assets && cp ../bizarrebeasts-memory-game-1/dist/index.html public/memorygame/index.html && cp ../bizarrebeasts-memory-game-1/dist/assets/* public/memorygame/assets/"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

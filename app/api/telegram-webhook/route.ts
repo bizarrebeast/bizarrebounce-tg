@@ -19,6 +19,7 @@ const START_GIFS = [
   `${PUBLIC_ORIGIN}/bizarrebounce-bizarrebeasts.gif`,
   `${PUBLIC_ORIGIN}/treasurequest-bizarrebeasts-loop.gif`,
   `${PUBLIC_ORIGIN}/tictactoe-bizarrebeasts.gif`,
+  `${PUBLIC_ORIGIN}/memorygame-bizarrebeasts.gif`,
 ];
 const pickStartGif = () => START_GIFS[Math.floor(Math.random() * START_GIFS.length)];
 
@@ -28,6 +29,7 @@ const GAMES = [
   { short: 'bbbounce', label: '🎮 Bizarre Bounce' },
   { short: 'treasurequest', label: '⛏️ Treasure Quest' },
   { short: 'tictactoe', label: '⭕ TicTacToe' },
+  { short: 'memorygame', label: '🧠 Memory Game' },
 ];
 
 type InlineKeyboard = { inline_keyboard: { text: string; url: string }[][] };
@@ -65,6 +67,7 @@ const WELCOME = [
   '• <b>Bizarre Bounce</b> — tap to fly, dodge pipes, go BIZARRE',
   '• <b>Treasure Quest</b> — retro climber, dodge enemies, collect treasure',
   '• <b>TicTacToe</b> — claim the board against BizarreBeasts',
+  '• <b>Memory Game</b> — match the BizarreBeasts, beat the clock',
 ].join('\n');
 
 export async function POST(req: NextRequest) {
