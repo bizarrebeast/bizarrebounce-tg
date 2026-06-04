@@ -18,6 +18,7 @@ const PUBLIC_ORIGIN = 'https://bizarrebounce-tg.bizarrebeasts.io';
 const START_GIFS = [
   `${PUBLIC_ORIGIN}/bizarrebounce-bizarrebeasts.gif`,
   `${PUBLIC_ORIGIN}/treasurequest-bizarrebeasts-loop.gif`,
+  `${PUBLIC_ORIGIN}/tictactoe-bizarrebeasts.gif`,
 ];
 const pickStartGif = () => START_GIFS[Math.floor(Math.random() * START_GIFS.length)];
 
