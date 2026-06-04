@@ -342,15 +342,19 @@
 
         function resizeSplashBackground() {
           if (!splashBgCanvas) return;
-          splashBgCanvas.width = window.innerWidth;
-          splashBgCanvas.height = window.innerHeight;
+          // Render at devicePixelRatio for crisp edges on Retina, then draw in CSS
+          // units (setTransform) so hardcoded line widths don't thin out.
+          const ratio = window.devicePixelRatio || 1;
+          splashBgCanvas.width = Math.round(window.innerWidth * ratio);
+          splashBgCanvas.height = Math.round(window.innerHeight * ratio);
+          splashBgCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
           drawSplashBackground();
         }
 
         function drawSplashBackground() {
           if (!splashBgCtx) return;
-          const w = splashBgCanvas.width;
-          const h = splashBgCanvas.height;
+          const w = window.innerWidth;
+          const h = window.innerHeight;
 
           // Sunset gradient sky
           drawSunsetGradient(splashBgCtx, w, h);
@@ -528,15 +532,19 @@
 
         function resizeGameBackground() {
           if (!gameBgCanvas) return;
-          gameBgCanvas.width = window.innerWidth;
-          gameBgCanvas.height = window.innerHeight;
+          // Render at devicePixelRatio for crisp edges on Retina, then draw in CSS
+          // units (setTransform) so hardcoded line widths don't thin out.
+          const ratio = window.devicePixelRatio || 1;
+          gameBgCanvas.width = Math.round(window.innerWidth * ratio);
+          gameBgCanvas.height = Math.round(window.innerHeight * ratio);
+          gameBgCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
           drawGameBackground();
         }
 
         function drawGameBackground() {
           if (!gameBgCtx) return;
-          const w = gameBgCanvas.width;
-          const h = gameBgCanvas.height;
+          const w = window.innerWidth;
+          const h = window.innerHeight;
 
           // Reuse the same functions as splash
           drawSunsetGradient(gameBgCtx, w, h);
@@ -558,6 +566,13 @@
         let demoActive = false;
         const demoCanvas = document.getElementById('demoCanvas');
         const demoCtx = demoCanvas ? demoCanvas.getContext('2d') : null;
+        // Match the gameplay board: raise the backing store to displayed-size x dpr
+        // so the splash preview board is crisp too. CSS holds display at max 260px.
+        if (demoCanvas) {
+          const ratio = window.devicePixelRatio || 1;
+          demoCanvas.width = 260 * ratio;
+          demoCanvas.height = 260 * ratio;
+        }
 
         const DEMO_WIN_PATTERNS = [
           [0, 1, 2], [3, 4, 5], [6, 7, 8],
@@ -592,7 +607,7 @@
 
           // Draw grid lines
           demoCtx.strokeStyle = '#000';
-          demoCtx.lineWidth = 3;
+          demoCtx.lineWidth = 3 * (window.devicePixelRatio || 1);
 
           // Vertical lines
           demoCtx.beginPath();
@@ -619,6 +634,11 @@
 
         function demoDrawPieces() {
           if (!demoCtx) return;
+          // High-quality resampling: the beast sprites are 1000px and get drawn
+          // small, so a single-step downscale at the default 'low' quality aliases
+          // (looks pixelated). 'high' uses a proper multi-step filter like Phaser.
+          demoCtx.imageSmoothingEnabled = true;
+          demoCtx.imageSmoothingQuality = 'high';
           const size = demoCanvas.width;
           const cellSize = size / 3;
           const padding = cellSize * 0.1;
@@ -782,9 +802,18 @@
         // CANVAS SIZING
         // ============================================
         function resizeCanvas() {
-          const maxSize = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.6, 400);
-          canvas.width = maxSize;
-          canvas.height = maxSize;
+          // Size the backing store to the actual on-screen size x devicePixelRatio
+          // so the board lines and beast art render crisp on Retina. CSS governs the
+          // display size (width:100%/max-width:400px); board math is proportional to
+          // canvas.width, and input mapping uses canvas.width/rect.width, so both
+          // self-correct at any resolution.
+          const ratio = window.devicePixelRatio || 1;
+          const rect = canvas.getBoundingClientRect();
+          const cssSize = rect.width > 0
+            ? rect.width
+            : Math.min(window.innerWidth * 0.9, window.innerHeight * 0.6, 400);
+          canvas.width = Math.round(cssSize * ratio);
+          canvas.height = Math.round(cssSize * ratio);
           if (gameActive) {
             resizeGameBackground();
             render();
@@ -972,7 +1001,7 @@
 
           // Draw grid lines
           ctx.strokeStyle = '#000';
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 3 * (window.devicePixelRatio || 1);
 
           // Vertical lines
           ctx.beginPath();
@@ -998,6 +1027,11 @@
         }
 
         function drawPieces() {
+          // High-quality resampling: the beast sprites are 1000px and get drawn
+          // small, so a single-step downscale at the default 'low' quality aliases
+          // (looks pixelated). 'high' uses a proper multi-step filter like Phaser.
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           const size = canvas.width;
           const cellSize = size / 3;
           const padding = cellSize * 0.1;
