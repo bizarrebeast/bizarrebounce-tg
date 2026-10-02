@@ -1583,8 +1583,10 @@
               playStartTime = performance.now();
               hasTappedThisRun = false;
               signalReady();
-              lastTime = performance.now();
-              requestAnimationFrame(gameLoop);
+              // No requestAnimationFrame here: gameLoop already runs continuously from startup.
+              // Starting it again here added a whole extra loop every round (2 draws a frame in
+              // round 1, 4 in round 2, 6 in round 3...). Cheap before the hand-drawn city, but with
+              // it the frame rate halved by round 3 (Dylan: "really glitchy", 2026-10-02).
             }
           }, 400);  // Faster countdown (400ms per number)
         }
@@ -1619,7 +1621,9 @@
         let lastTime = performance.now();
 
         function gameLoop(currentTime = performance.now()) {
-          const delta = (currentTime - lastTime) / (1000 / 60);
+          // Clamped: after a slow frame or a backgrounded tab, a raw delta would jump the bird and
+          // pipes several frames' worth in one step.
+          const delta = Math.min(Math.max((currentTime - lastTime) / (1000 / 60), 0), 3);
           lastTime = currentTime;
           frameCount++;
           updateSkyCycle(delta); // ambient, runs in every state (splash included)
